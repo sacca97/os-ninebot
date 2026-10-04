@@ -1,4 +1,4 @@
-# OpenRide (unofficial)
+# OpenRide
 
 Open-source Android client for the Segway F2 Pro: credential import, info display, power on/off.
 Not affiliated with Segway-Ninebot; use at your own risk. See `../docs/android-plan.md`.

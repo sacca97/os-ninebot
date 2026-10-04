@@ -14,7 +14,7 @@
         android:name="openride.app.OpenRideApp"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        android:label="OpenRide (unofficial)"
+        android:label="OpenRide"
         android:theme="@style/Theme.OpenRide">
         <activity android:name="openride.app.MainActivity" android:exported="true">
             <intent-filter>
