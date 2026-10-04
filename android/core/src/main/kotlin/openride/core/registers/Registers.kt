@@ -32,6 +32,22 @@ object Registers {
         return "${v shr 8}.${(v shr 4) and 0xF}.${v and 0xF}"
     }
 
+    /** One u16 per cell in mV (10S pack), e.g. "4102 4099 ... mV (spread 61 mV)". */
+    internal fun cells(b: ByteArray): String {
+        val mv = (0 until b.size / 2).map { u(b.copyOfRange(it * 2, it * 2 + 2)).toInt() }
+        return "${mv.joinToString(" ")} mV (spread ${mv.max() - mv.min()} mV)"
+    }
+
+    internal fun current(raw: Int): String = when {
+        raw < 0 -> "charging " + fixed(-raw / 100.0, 2, "A")
+        raw > 0 -> "discharging " + fixed(raw / 100.0, 2, "A")
+        else -> "idle 0.00 A"
+    }
+
+    /** Two sensors, one byte each, degrees C + 20. */
+    internal fun cellTemps(b: ByteArray): String =
+        b.take(2).joinToString(", ") { "${(it.toInt() and 0xFF) - 20} °C" }
+
     fun powerOn(raw: ByteArray): Boolean = u(raw) == 1L
 
     val SERIAL = Reg("serial", "Serial", Dev.CONTROLLER, 0x10, 7, static = true) {
@@ -54,13 +70,22 @@ object Registers {
         Reg("error", "Error code", Dev.CONTROLLER, 0x1B, 1) { "0x%04X".format(u(it)) },
         Reg("alarm", "Alarm code", Dev.CONTROLLER, 0x1C, 1) { "0x%04X".format(u(it)) },
         Reg("status", "Status word", Dev.CONTROLLER, 0x1D, 1) { "0x%04X".format(u(it)) },
-        // Unverified on a real scooter: shown only in the Experimental section.
-        Reg("batt_a", "Battery current", Dev.BATTERY, 0x33, 1, experimental = true) { fixed(s16(it) / 100.0, 2, "A") },
-        Reg("batt_health", "Battery health", Dev.BATTERY, 0x3B, 1, experimental = true) { "${u(it)} %" },
-        Reg("temp", "Body temperature", Dev.CONTROLLER, 0x3E, 1, experimental = true) { fixed(s16(it) / 10.0, 1, "°C") },
+        // Read live from the scooter via the Python tool (docs/f2pro-findings.md); not yet confirmed in this app.
+        // Negative current = charging (seen in both directions with the charger plugged and unplugged).
+        Reg("batt_a", "Battery current", Dev.BATTERY, 0x33, 1) { current(s16(it)) },
+        Reg("cell_mv", "Cell voltages", Dev.BATTERY, 0x40, 10, decode = ::cells),
+        Reg("cell_temp", "Cell temperatures", Dev.BATTERY, 0x35, 1, decode = ::cellTemps),
+        Reg("batt_health", "Battery health", Dev.BATTERY, 0x3B, 1) { "${u(it)} %" },
+        Reg("temp", "Body temperature", Dev.CONTROLLER, 0x3E, 1) { fixed(s16(it) / 10.0, 1, "°C") },
+        // Still unverified (or meaning unknown): shown only in the Experimental section.
         Reg("ctrl_v", "Controller voltage", Dev.CONTROLLER, 0x47, 1, experimental = true) { fixed(u(it) / 100.0, 2, "V") },
-        Reg("range_pred", "Predicted range", Dev.CONTROLLER, 0x25, 1, experimental = true) { fixed(u(it) / 100.0, 2, "km") },
-        Reg("kers", "KERS", Dev.CONTROLLER, 0x7B, 1, experimental = true) { "${u(it)}" },
+        Reg("range_pred", "Predicted range", Dev.CONTROLLER, 0x25, 1) { fixed(u(it) / 100.0, 2, "km") },
+        Reg("walk_mode", "Walk mode (5 km/h)", Dev.CONTROLLER, 0x77, 1) { if (u(it) != 0L) "on" else "off" },
+        Reg("charging", "Charging", Dev.CONTROLLER, 0x1D, 1) { if (u(it) and 0x100L != 0L) "yes" else "no" },
+        Reg("kers", "KERS", Dev.CONTROLLER, 0x7B, 1) {
+            when (u(it).toInt()) { 0 -> "weak"; 1 -> "medium"; 2 -> "strong"; else -> "unknown (${u(it)})" }
+        },
+        Reg("tcs", "Traction control (TCS)", Dev.CONTROLLER, 0xF3, 1) { if (u(it) != 0L) "on" else "off" },
         Reg("cruise", "Cruise", Dev.CONTROLLER, 0x7C, 1, experimental = true) { "${u(it)}" },
         Reg("tail_light", "Tail light", Dev.CONTROLLER, 0x7D, 1, experimental = true) { "${u(it)}" },
     )

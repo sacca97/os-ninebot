@@ -61,7 +61,9 @@ fun DashboardScreen(vm: DashboardViewModel, settingsVm: SettingsViewModel = hilt
                 }
             }
             if (st.power == true) {
-                Section("Status", listOf("batt_pct", "batt_v", "range", "mileage", "avg_speed", "mode"), st.values)
+                Section("Battery", listOf("batt_pct", "batt_v", "batt_a", "charging", "batt_health", "cell_mv", "cell_temp"), st.values)
+                Section("Status", listOf("range", "range_pred", "mileage", "avg_speed", "mode", "temp"), st.values)
+                Section("Settings (read-only)", listOf("kers", "tcs", "walk_mode"), st.values)
                 Section("Diagnostics", listOf("error", "alarm", "status"), st.values)
                 Section("Device", listOf("serial", "ctrl_fw", "ble_fw", "bms_fw"), st.values)
                 if (settings.showExperimental) {
