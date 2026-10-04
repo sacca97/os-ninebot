@@ -257,10 +257,6 @@ async def cmd_power(args) -> None:
         if state == (1 if on else 0):
             print(f"Already {args.state}; nothing sent.")
             return
-        if not on and not args.yes:
-            print("Only do this while the scooter is standing still.")
-            if input("Type OFF to power the scooter off: ").strip() != "OFF":
-                sys.exit("Aborted, nothing sent.")
         print(f"Sending POWER {args.state.upper()} (one write, no retry) ...")
         if await client.set_power(on):
             print(f"Done: power state is now {args.state} (0x4D = {1 if on else 0}).")
@@ -326,7 +322,6 @@ def main() -> None:
     s.add_argument("--address")
     s.add_argument("--name", help="override BLE name used for crypto")
     s.add_argument("--debug", action="store_true")
-    s.add_argument("--yes", action="store_true", help="skip the confirmation when powering off")
     s.set_defaults(func=cmd_power)
 
     s = sub.add_parser("pair", help="REPLACE the scooter's password with a new one (needs --force)")
