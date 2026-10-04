@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -73,7 +75,11 @@ class DeviceViewModel @Inject constructor(
 
     fun clearMessages() = _ui.update { it.copy(error = null, notice = null) }
 
-    /** From the text field or a file: same format (32 hex characters), see [CredentialHex]. */
+    /**
+     * From the text field or a file: same format (32 hex characters), see [CredentialHex]. The password is NOT trusted until the
+     * scooter accepts it: it goes into the pending slot, one real login is attempted, and only then is it stored. A wrong one
+     * never replaces a working credential, and a rejection starts the usual login cool-down.
+     */
     fun importCredential(text: String): Boolean {
         val info = _ui.value.info ?: return false
         val pw = CredentialHex.parse(text)
@@ -81,9 +87,35 @@ class DeviceViewModel @Inject constructor(
             _ui.update { it.copy(error = "Credential must be exactly 32 hex characters (16 bytes).") }
             return false
         }
-        viewModelScope.launch {
-            store.save(info.serial, pw)
-            _ui.update { it.copy(hasCredential = true, error = null, notice = "Credential imported.") }
+        if (connector.inCooldown()) {
+            _ui.update { it.copy(error = "Wait for the login cool-down to end, then import again.") }
+            return false
+        }
+        job?.cancel()
+        job = viewModelScope.launch {
+            _ui.update { it.copy(busy = "Verifying credential…", error = null, notice = null) }
+            var conn: com.sacca.openride.app.data.Connection? = null
+            try {
+                store.savePending(info.serial, pw)
+                conn = connector.connect(this)
+                conn.session.login(pw) // one attempt, no retry
+                store.promotePending(info.serial)
+                _ui.update { it.copy(hasCredential = true, notice = "Credential verified.") }
+                navigator.resetTo(Screen.Dashboard)
+            } catch (e: CancellationException) {
+                withContext(NonCancellable) { store.discardPending(info.serial) }
+                throw e
+            } catch (e: CredentialRejected) {
+                store.discardPending(info.serial)
+                connector.markRejected()
+                _ui.update { it.copy(error = "The scooter rejected this credential, so it was not saved. Check that it is the one the official app or `f2` currently uses.") }
+            } catch (e: Throwable) {
+                store.discardPending(info.serial)
+                _ui.update { it.copy(error = "Could not verify the credential, so it was not saved: ${describe(e)}") }
+            } finally {
+                withContext(NonCancellable) { conn?.session?.close() }
+                _ui.update { it.copy(busy = null) }
+            }
         }
         return true
     }

@@ -62,6 +62,11 @@ class CredentialStore @Inject constructor(@ApplicationContext private val contex
     /** Persist BEFORE SET_PWD goes out so the new password can never be lost. */
     suspend fun savePending(serial: String, pw: ByteArray) = put("pending", serial, pw)
 
+    /** Drop a pending password that did not validate; the stored one (if any) is untouched. */
+    suspend fun discardPending(serial: String) {
+        context.dataStore.edit { it.remove(key("pending", serial)) }
+    }
+
     suspend fun forget(serial: String) {
         context.dataStore.edit { it.remove(key("pw", serial)); it.remove(key("pending", serial)) }
     }

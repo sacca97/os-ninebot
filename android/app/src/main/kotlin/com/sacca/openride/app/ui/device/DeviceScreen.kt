@@ -109,6 +109,7 @@ fun DeviceScreen(vm: DeviceViewModel) {
             Text("Credential", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
             Text(
                 "Import a 32-hex-character password: typed or pasted, or from a text file (the file `f2 keys --export` writes). " +
+                    "It is checked with a real login first and only saved if the scooter accepts it. " +
                     "Nothing on the scooter is changed.",
                 style = MaterialTheme.typography.bodySmall,
             )

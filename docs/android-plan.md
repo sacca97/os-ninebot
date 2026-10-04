@@ -398,3 +398,9 @@ look like a lock-out if hammered: keep to one attempt per connection and add a v
   "Turn on Bluetooth" button (system dialog) instead of a connection error; it connects by itself the moment the radio comes on, and
   switching the radio off while connected drops the link quietly. A missing permission shows "Bluetooth permission needed" and an Allow button.
   Verified on an emulator (off, on, and the system dialog opening); not tried against a real scooter.
+
+## Credential import is validated (status)
+- Importing (typed, pasted or from a file) no longer just stores the password: it goes to the pending slot, one real login is attempted
+  (connect, INIT, AUTH), and only on success is it promoted and the app opens the home screen. A rejection discards it, keeps any
+  existing credential untouched and starts the normal 30 s login cool-down; a connection failure also discards it and says why.
+  Not possible during the cool-down. ❓ not tried against the scooter yet (the code path is the same one `pair` and the dashboard use).
