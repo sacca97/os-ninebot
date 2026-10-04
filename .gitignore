@@ -1,0 +1,29 @@
+# --- PRIVATE: real captures, credentials, logs. Never commit these. ---
+*.pklg
+*.btsnoop
+btsnoop*.log
+captures/
+app_key*
+*.pending
+*.bak
+.env
+.env.*
+
+# --- Python (f2probe) ---
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+/build/
+/dist/
+
+# --- Editors / OS ---
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp

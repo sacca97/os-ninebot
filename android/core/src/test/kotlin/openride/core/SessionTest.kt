@@ -1,0 +1,125 @@
+package openride.core
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.runBlocking
+import openride.core.crypto.NinebotCrypto
+import openride.core.protocol.Cmd
+import openride.core.protocol.Dev
+import openride.core.protocol.FrameReassembler
+import openride.core.protocol.Packet
+import openride.core.registers.Registers
+import openride.core.safety.FrameGuard
+import openride.core.session.CredentialRejected
+import openride.core.session.PowerResult
+import openride.core.session.ScooterLink
+import openride.core.session.ScooterSession
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
+import org.junit.Test
+
+/** Runs the scooter side of the protocol with the same crypto. */
+class FakeScooterLink(
+    private val name: String,
+    private val password: ByteArray,
+    var powered: Boolean = true,
+) : ScooterLink {
+    private val out = Channel<ByteArray>(Channel.UNLIMITED)
+    override val incoming: Flow<ByteArray> = out.receiveAsFlow()
+    val sent = mutableListOf<Packet>()
+    private val re = FrameReassembler()
+    private val bleData = ByteArray(16) { (it * 7 + 1).toByte() }
+    private val serial = "NBFAKE0000001A".toByteArray()
+    private val nameKey = NinebotCrypto.deriveKey(name.toByteArray(), NinebotCrypto.FW_DATA)
+    private val appKey = NinebotCrypto.deriveKey(password, bleData)
+
+    override suspend fun write(chunk: ByteArray) {
+        for (f in re.feed(chunk)) handle(f)
+    }
+
+    override suspend fun close() { out.close() }
+
+    private fun reply(p: Packet, counter: Int) {
+        out.trySend(
+            if (counter == 0) NinebotCrypto.sealWeak(p.pack(), nameKey)
+            else NinebotCrypto.sealAes(p.pack(), appKey, bleData, counter),
+        )
+    }
+
+    private fun handle(f: ByteArray) {
+        val c = NinebotCrypto.wireCounter(f)
+        if (c == 0) {
+            val p = Packet.unpack(NinebotCrypto.openWeak(f, nameKey) ?: return) ?: return
+            sent += p
+            if (p.cmd == Cmd.INIT) reply(Packet(Dev.BLE, Dev.PHONE, Cmd.INIT, 1, bleData + serial), 0)
+            return
+        }
+        val p = Packet.unpack(NinebotCrypto.openAes(f, appKey, bleData) ?: return) ?: return // wrong key: silence
+        sent += p
+        when {
+            p.cmd == Cmd.AUTH -> reply(Packet(Dev.BLE, Dev.PHONE, Cmd.AUTH, 1), c + 1)
+            p.cmd == Cmd.READ && p.dst == Dev.BLE && p.idx == Registers.POWER_STATE_IDX ->
+                reply(Packet(Dev.BLE, Dev.PHONE, Cmd.READ_ACK, p.idx, byteArrayOf(if (powered) 1 else 0, 0)), c + 1)
+            p.cmd == Cmd.READ && p.dst == Dev.BATTERY && p.idx == 0x32 ->
+                reply(Packet(Dev.BATTERY, Dev.PHONE, Cmd.READ_ACK, p.idx, byteArrayOf(66, 0)), c + 1)
+            p == FrameGuard.POWER_OFF -> powered = false
+            p == FrameGuard.POWER_ON -> powered = true
+        }
+    }
+}
+
+class SessionTest {
+    private val pw = ByteArray(16) { (it + 1).toByte() }
+
+    private fun <T> run(link: FakeScooterLink, power: Boolean = false, block: suspend (ScooterSession) -> T): T =
+        runBlocking {
+            val s = ScooterSession(link, "NBFAKE0000001A", allowPower = power)
+            s.start(CoroutineScope(Dispatchers.Default))
+            try { block(s) } finally { s.close() }
+        }
+
+    @Test fun handshakeAndRead() {
+        val link = FakeScooterLink("NBFAKE0000001A", pw)
+        run(link) { s ->
+            val info = s.init()
+            assertEquals("NBFAKE0000001A", info.serial)
+            assertTrue(info.passwordStored)
+            s.login(pw)
+            assertTrue(s.powerState())
+            assertEquals("66 %", s.read(Registers.all.first { it.key == "batt_pct" }))
+        }
+    }
+
+    @Test fun wrongCredentialIsRejected() {
+        val link = FakeScooterLink("NBFAKE0000001A", pw)
+        run(link) { s ->
+            s.init()
+            try { s.login(ByteArray(16)); fail() } catch (_: CredentialRejected) {}
+        }
+    }
+
+    @Test fun powerAlreadyInStateSendsNothing() {
+        val link = FakeScooterLink("NBFAKE0000001A", pw, powered = true)
+        run(link, power = true) { s ->
+            s.init(); s.login(pw)
+            assertEquals(PowerResult.ALREADY_IN_STATE, s.setPower(true))
+        }
+        assertTrue(link.sent.none { it.cmd == Cmd.WRITE_NO_REPLY })
+    }
+
+    @Test fun powerOffSendsExactlyOneWrite() {
+        val link = FakeScooterLink("NBFAKE0000001A", pw, powered = true)
+        run(link, power = true) { s ->
+            s.init(); s.login(pw)
+            assertEquals(PowerResult.CHANGED, s.setPower(false))
+        }
+        assertEquals(1, link.sent.count { it.cmd == Cmd.WRITE_NO_REPLY })
+        assertFalse(link.powered)
+    }
+
+}

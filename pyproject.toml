@@ -1,0 +1,18 @@
+[project]
+name = "f2probe"
+version = "0.1.0"
+description = "Research tool for the Ninebot/Segway F2 Pro BLE protocol"
+requires-python = ">=3.10"
+dependencies = [
+  "bleak>=0.22",
+  "miauth==0.9.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+f2 = "f2probe.cli:main"
+
+[tool.setuptools]
+packages = ["f2probe"]

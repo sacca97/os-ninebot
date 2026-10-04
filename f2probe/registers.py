@@ -1,0 +1,103 @@
+"""Controller (0x20) and BMS (0x22) register map.
+
+Ported from ownbee/ninebot-ble (MIT), ninebot_ble/register.py at commit 1850351f5bce9627f612fd1141489ed7a575be61
+(https://github.com/ownbee/ninebot-ble). Copyright (c) 2014 Alexander Ernfridsson (upstream notice).
+These describe READ registers only; nothing here is ever written.
+"""
+
+from __future__ import annotations
+
+import struct
+from dataclasses import dataclass
+from typing import Any, Callable
+
+from .protocol import Dev
+
+
+def _le16(d: bytes) -> int:
+    return d[0] | (d[1] << 8)
+
+
+def _les16(d: bytes) -> int:
+    return struct.unpack("<h", d[:2])[0]
+
+
+def _u32(d: bytes) -> int:
+    return _le16(d[:2]) | (_le16(d[2:4]) << 16)
+
+
+def _ver(d: bytes) -> str:
+    v = _le16(d)
+    return f"{v >> 8}.{(v >> 4) & 0xF}.{v & 0xF}"
+
+
+def _str(d: bytes) -> str:
+    return d.decode(errors="replace").rstrip("\x00")
+
+
+def _bit(pos: int) -> Callable[[bytes], bool]:
+    return lambda d: bool(_le16(d) & (1 << pos))
+
+
+_MODES = {0: "NORMAL", 1: "ECO", 2: "SPORT"}
+
+
+@dataclass(frozen=True)
+class Reg:
+    key: str
+    label: str
+    target: int
+    index: int
+    count: int  # number of consecutive 2-byte indices
+    decode: Callable[[bytes], Any]
+    unit: str = ""
+
+
+C, B = Dev.ES_CONTROL, Dev.ES_BATT
+
+REGISTERS: list[Reg] = [
+    Reg("serial", "Serial", C, 0x10, 7, _str),
+    Reg("bt_password", "BT pairing code", C, 0x17, 3, _str),
+    Reg("fw_ctrl", "Controller FW", C, 0x1A, 1, _ver),
+    Reg("error", "Error code", C, 0x1B, 1, _le16),
+    Reg("alarm", "Alarm code", C, 0x1C, 1, _le16),
+    Reg("status_word", "Status word (0x1D)", C, 0x1D, 1, lambda d: f"0x{_le16(d):04X}"),
+    # BLE-board register 0x4D is the POWER state (1 = on, 0 = off), readable while the scooter is off because
+    # the BLE board stays alive. Seen live: "unlocked" in the app -> 1, "locked" -> 0, and the controller/battery
+    # boards stop answering when it is 0. Community docs (ha-ninebot issue #13) describe the same register.
+    Reg("power_state", "Power state (0x4D)", Dev.ES_BLE, 0x4D, 1, lambda d: f"{'on' if _le16(d) else 'off'} (raw {_le16(d)})"),
+    Reg("lock_0x1d_bit1", "Lock bit (0x1D bit 1, legacy)", C, 0x1D, 1, _bit(1)),
+    Reg("speed_limited", "Speed limited", C, 0x1D, 1, _bit(0)),
+    Reg("activated", "Activated", C, 0x1D, 1, _bit(11)),
+    Reg("range_actual", "Range (actual)", C, 0x24, 1, lambda d: _le16(d) / 100, "km"),
+    Reg("range_predicted", "Range (predicted)", C, 0x25, 1, lambda d: _le16(d) / 100, "km"),
+    Reg("mileage", "Mileage", C, 0x29, 2, lambda d: round(_u32(d) / 1000, 1), "km"),
+    Reg("body_temp", "Body temperature", C, 0x3E, 1, lambda d: _les16(d) / 10, "°C"),
+    Reg("ctrl_voltage", "Controller voltage", C, 0x47, 1, lambda d: _le16(d) / 100, "V"),
+    Reg("avg_speed", "Average speed", C, 0x65, 1, lambda d: _le16(d) / 10, "km/h"),
+    Reg("fw_ble", "BLE FW", C, 0x68, 1, _ver),
+    Reg("mode", "Mode", C, 0x75, 1, lambda d: _MODES.get(_le16(d), f"0x{_le16(d):04X}")),
+    Reg("kers", "KERS level", C, 0x7B, 1, _le16),
+    Reg("cruise", "Cruise", C, 0x7C, 1, lambda d: bool(_le16(d))),
+    Reg("tail_light", "Tail light", C, 0x7D, 1, _le16),
+    Reg("bms_fw", "BMS FW", B, 0x17, 1, lambda d: f"0x{_le16(d):04X}"),
+    Reg("battery", "Battery", B, 0x32, 1, _le16, "%"),
+    Reg("battery_current", "Battery current", B, 0x33, 1, lambda d: _les16(d) / 100, "A"),
+    Reg("battery_voltage", "Battery voltage", B, 0x34, 1, lambda d: _le16(d) / 100, "V"),
+    Reg("battery_health", "Battery health", B, 0x3B, 1, _le16, "%"),
+]
+
+BY_KEY = {r.key: r for r in REGISTERS}
+
+STATUS_KEYS = [
+    "power_state", "serial", "fw_ctrl", "fw_ble", "bms_fw", "battery", "battery_voltage", "range_actual",
+    "avg_speed", "mileage", "mode", "status_word", "error", "alarm",
+]  # fmt: skip
+
+
+def describe_index(target: int, index: int) -> str | None:
+    """Best-effort register name for a (target, index) pair, for annotating traces."""
+    for r in REGISTERS:
+        if r.target == target and r.index <= index < r.index + r.count and r.key not in ("lock_0x1d_bit1", "speed_limited", "activated"):
+            return r.label
+    return None

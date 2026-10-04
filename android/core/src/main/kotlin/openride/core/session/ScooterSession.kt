@@ -1,0 +1,214 @@
+package openride.core.session
+
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
+import openride.core.crypto.KeyLabel
+import openride.core.crypto.SessionCrypto
+import openride.core.protocol.Cmd
+import openride.core.protocol.Dev
+import openride.core.protocol.FrameReassembler
+import openride.core.protocol.Packet
+import openride.core.registers.Reg
+import openride.core.registers.Registers
+import openride.core.safety.FrameGuard
+
+class LinkClosedException(cause: Throwable? = null) : RuntimeException("Bluetooth link closed", cause)
+class ScooterTimeout(what: String) : RuntimeException("No reply: $what")
+class CredentialRejected : RuntimeException("Scooter did not accept the credential")
+
+class InitInfo(val serial: String, val passwordStored: Boolean)
+
+enum class PowerResult { ALREADY_IN_STATE, CHANGED, NO_CHANGE }
+
+/**
+ * Handshake + request/response over a [ScooterLink]. One request in flight at a time.
+ * Every outgoing frame goes through [FrameGuard].
+ */
+class ScooterSession(
+    private val link: ScooterLink,
+    deviceName: String,
+    private val allowPower: Boolean = false,
+    private val allowPairing: Boolean = false,
+    private val onFrame: ((FrameEvent) -> Unit)? = null,
+) {
+    private val crypto = SessionCrypto(deviceName.toByteArray(Charsets.UTF_8))
+    private val reassembler = FrameReassembler()
+    private val replies = Channel<Packet>(Channel.UNLIMITED)
+    private val gate = Mutex()
+    private var reader: Job? = null
+    private val _notifications = MutableSharedFlow<Packet>(extraBufferCapacity = 16)
+
+    /** Unsolicited BLE-board register-change notifications (cmd 0x21). */
+    val notifications: SharedFlow<Packet> = _notifications
+
+    fun start(scope: CoroutineScope) {
+        reader = scope.launch {
+            try {
+                link.incoming.collect { chunk ->
+                    for (frame in reassembler.feed(chunk)) {
+                        val o = crypto.open(frame) ?: continue
+                        val p = o.packet ?: continue
+                        onFrame?.invoke(FrameEvent(false, p, o.key, o.counter, frame))
+                        if (p.cmd == NOTIFY_CMD) _notifications.tryEmit(p) else replies.trySend(p)
+                    }
+                }
+                replies.close(LinkClosedException())
+            } catch (e: CancellationException) {
+                replies.close(LinkClosedException())
+                throw e
+            } catch (e: Throwable) {
+                replies.close(LinkClosedException(e))
+            }
+        }
+    }
+
+    suspend fun close() {
+        reader?.cancel()
+        link.close()
+    }
+
+    // -- low level ------------------------------------------------------
+
+    private suspend fun send(p: Packet) {
+        FrameGuard.assertSafe(p, allowPairing, allowPower)
+        val frame = crypto.seal(p)
+        onFrame?.invoke(FrameEvent(true, p, crypto.txKey, crypto.counter, frame))
+        var off = 0
+        while (off < frame.size) {
+            val n = minOf(link.maxChunk, frame.size - off)
+            link.write(frame.copyOfRange(off, off + n))
+            off += n
+        }
+    }
+
+    private suspend fun await(timeoutMs: Long, what: String, match: (Packet) -> Boolean): Packet {
+        try {
+            return withTimeout(timeoutMs) {
+                while (true) {
+                    val r = replies.receive()
+                    if (match(r)) return@withTimeout r
+                }
+                @Suppress("UNREACHABLE_CODE") error("unreachable")
+            }
+        } catch (e: TimeoutCancellationException) {
+            throw ScooterTimeout(what)
+        }
+    }
+
+    private suspend fun request(p: Packet, what: String, timeoutMs: Long = 3000, match: (Packet) -> Boolean): Packet =
+        gate.withLock {
+            while (replies.tryReceive().isSuccess) { /* drop stale frames */ }
+            send(p)
+            await(timeoutMs, what, match)
+        }
+
+    // -- handshake ------------------------------------------------------
+
+    suspend fun init(): InitInfo {
+        val r = request(Packet(Dev.PHONE, Dev.BLE, Cmd.INIT, 0), "INIT") { it.src == Dev.BLE && it.cmd == Cmd.INIT }
+        val serial = checkNotNull(crypto.serial) { "INIT reply without serial" }
+        return InitInfo(serial, r.idx == 1)
+    }
+
+    /** One attempt, no retry. A wrong password gets no reply: reported as [CredentialRejected]. */
+    suspend fun login(password: ByteArray, resetCounter: Boolean = true) {
+        require(password.size == 16) { "credential must be 16 bytes" }
+        val serial = checkNotNull(crypto.serial) { "call init() first" }
+        crypto.password = password
+        crypto.txKey = KeyLabel.APP
+        // After a fresh INIT the login must go out as counter 2. Right after pairing on the same connection the
+        // counter is left as the scooter last reported it (as the Python tool does).
+        if (resetCounter) crypto.counter = 1
+        try {
+            request(Packet(Dev.PHONE, Dev.BLE, Cmd.AUTH, 0, serial.toByteArray(Charsets.US_ASCII)), "AUTH") {
+                it.src == Dev.BLE && it.cmd == Cmd.AUTH && it.idx == 1
+            }
+        } catch (_: ScooterTimeout) {
+            throw CredentialRejected()
+        }
+    }
+
+    // -- reads ----------------------------------------------------------
+
+    /** Reads are idempotent: at most [retries] retries on timeout. */
+    suspend fun readRaw(dev: Int, idx: Int, retries: Int = 2, timeoutMs: Long = 3000): ByteArray {
+        var attempt = 0
+        while (true) {
+            try {
+                val r = request(Packet(Dev.PHONE, dev, Cmd.READ, idx, byteArrayOf(2)), "READ %02X:%02X".format(dev, idx), timeoutMs) {
+                    it.src == dev && it.cmd == Cmd.READ_ACK && it.idx == idx
+                }
+                return r.data
+            } catch (e: ScooterTimeout) {
+                if (attempt++ >= retries) throw e
+            }
+        }
+    }
+
+    suspend fun read(reg: Reg, retries: Int = 2): String {
+        val bytes = ArrayList<Byte>()
+        for (i in 0 until reg.words) bytes += readRaw(reg.dev, reg.idx + i, retries).toList()
+        return reg.decode(bytes.toByteArray())
+    }
+
+    suspend fun powerState(retries: Int = 2, timeoutMs: Long = 3000): Boolean =
+        Registers.powerOn(readRaw(Registers.POWER_STATE_DEV, Registers.POWER_STATE_IDX, retries, timeoutMs))
+
+    // -- power ----------------------------------------------------------
+
+    /**
+     * Never retries the write. If already in the requested state, sends nothing. Polls the power register for up
+     * to [waitMs] and reports [PowerResult.NO_CHANGE] if it did not flip (does not resend).
+     */
+    suspend fun setPower(on: Boolean, waitMs: Long = 15_000): PowerResult {
+        if (powerState() == on) return PowerResult.ALREADY_IN_STATE
+        gate.withLock { send(if (on) FrameGuard.POWER_ON else FrameGuard.POWER_OFF) }
+        val deadline = System.currentTimeMillis() + waitMs
+        while (System.currentTimeMillis() < deadline) {
+            delay(1000)
+            val now = try { powerState(retries = 0, timeoutMs = 1500) } catch (_: ScooterTimeout) { continue }
+            if (now == on) return PowerResult.CHANGED
+        }
+        return PowerResult.NO_CHANGE
+    }
+
+    // -- pairing (experimental) ------------------------------------------
+
+    /**
+     * Sends SET_PWD once. [weak] = counter 0 with the bleKey (the verified flow); otherwise an AES frame at counter 2.
+     * Returns the reply idx (0 = pending, 1 = accepted) or null if there was no reply.
+     */
+    suspend fun sendSetPassword(password: ByteArray, weak: Boolean, timeoutMs: Long): Int? {
+        require(password.size == 16)
+        crypto.txKey = KeyLabel.BLE
+        crypto.counter = if (weak) 0 else 1
+        return try {
+            request(Packet(Dev.PHONE, Dev.BLE, Cmd.SET_PWD, 0, password), "SET_PWD", timeoutMs) {
+                it.src == Dev.BLE && it.cmd == Cmd.SET_PWD
+            }.idx
+        } catch (_: ScooterTimeout) {
+            null
+        }
+    }
+
+    /** Waits for the next SET_PWD reply (e.g. the "accepted" one after the button press). */
+    suspend fun awaitSetPasswordReply(timeoutMs: Long): Int? = try {
+        gate.withLock { await(timeoutMs, "SET_PWD reply") { it.src == Dev.BLE && it.cmd == Cmd.SET_PWD }.idx }
+    } catch (_: ScooterTimeout) {
+        null
+    }
+
+    companion object {
+        const val NOTIFY_CMD = 0x21
+    }
+}

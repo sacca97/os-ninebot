@@ -1,0 +1,182 @@
+{
+  "note": "SYNTHETIC test data. counter = value used in the nonce (32-bit); only the low 16 bits go on the wire. key: name=sha1(pad16(name)||FW_DATA)[:16] non-SN mode; ble=sha1(pad16(name)||ble_data)[:16]; app=sha1(app_key||ble_data)[:16]; the latter two use AES-CTR + CBC-MAC.",
+  "name": "NBTEST0000001A",
+  "ble_data": "00112233445566778899AABBCCDDEEFF",
+  "app_key": "F0E1D2C3B4A5968778695A4B3C2D1E0F",
+  "fw_data": "97CFB802844143DE56002B3B34780A5D",
+  "derived_keys": {
+    "name": "173E250145D97579EC3FFD15D59D5935",
+    "ble": "88894133A8349D3D5A822B9183EA6B43",
+    "app": "12D0E618225FF7920AAD3255B00B1978"
+  },
+  "vectors": [
+    {
+      "id": "init_request",
+      "key": "name",
+      "counter": 0,
+      "wire_counter": 0,
+      "plaintext": "5AA5003E215B00",
+      "frame": "5AA5004F150C2E000045FF0000"
+    },
+    {
+      "id": "init_reply_password_stored",
+      "key": "name",
+      "counter": 0,
+      "wire_counter": 0,
+      "plaintext": "5AA51E213E5B0100112233445566778899AABBCCDDEEFF4E42544553543030303030303141",
+      "frame": "5AA51E500A0C2FF6F526A35BA3B1572D498E8EBDE9B9D1B8A650D54CA2E71095E0140540750000EAF30000"
+    },
+    {
+      "id": "init_reply_no_password",
+      "key": "name",
+      "counter": 0,
+      "wire_counter": 0,
+      "plaintext": "5AA51E213E5B0000112233445566778899AABBCCDDEEFF4E42544553543030303030303141",
+      "frame": "5AA51E500A0C2EF6F526A35BA3B1572D498E8EBDE9B9D1B8A650D54CA2E71095E0140540750000EBF30000"
+    },
+    {
+      "id": "set_pwd_request_counter0",
+      "key": "ble",
+      "counter": 0,
+      "wire_counter": 0,
+      "plaintext": "5AA5103E215C00F0E1D2C3B4A5968778695A4B3C2D1E0F",
+      "frame": "5AA510E915A6C7DBED7E2EDA3265B81E94AB18EB19E4C800004CF70000"
+    },
+    {
+      "id": "set_pwd_request_aes",
+      "key": "ble",
+      "counter": 5,
+      "wire_counter": 5,
+      "plaintext": "5AA5103E215C00F0E1D2C3B4A5968778695A4B3C2D1E0F",
+      "frame": "5AA51027FA33C4F5822A9EB3F632D511C8B632B8E94FB079057F7C0005"
+    },
+    {
+      "id": "set_pwd_reply_pending",
+      "key": "ble",
+      "counter": 6,
+      "wire_counter": 6,
+      "plaintext": "5AA500213E5C00",
+      "frame": "5AA500D65B7E2E2BDECD460006"
+    },
+    {
+      "id": "set_pwd_reply_accepted",
+      "key": "ble",
+      "counter": 7,
+      "wire_counter": 7,
+      "plaintext": "5AA500213E5C01",
+      "frame": "5AA50099AFD06D0AB85E2C0007"
+    },
+    {
+      "id": "auth_request",
+      "key": "app",
+      "counter": 2,
+      "wire_counter": 2,
+      "plaintext": "5AA50E3E215D004E42544553543030303030303141",
+      "frame": "5AA50E8B652982F8928333B98958A4B064EF79C833833AA5140002"
+    },
+    {
+      "id": "auth_reply_ok",
+      "key": "app",
+      "counter": 3,
+      "wire_counter": 3,
+      "plaintext": "5AA500213E5D01",
+      "frame": "5AA50018B22F11B0048ADD0003"
+    },
+    {
+      "id": "read_ctrl_status_word",
+      "key": "app",
+      "counter": 4,
+      "wire_counter": 4,
+      "plaintext": "5AA5013E20011D02",
+      "frame": "5AA50189763406531FD1AE5F0004"
+    },
+    {
+      "id": "read_ctrl_status_word_ack",
+      "key": "app",
+      "counter": 5,
+      "wire_counter": 5,
+      "plaintext": "5AA502203E041D0008",
+      "frame": "5AA50266CB6DEF2424500304C60005"
+    },
+    {
+      "id": "read_ble_power_state",
+      "key": "app",
+      "counter": 6,
+      "wire_counter": 6,
+      "plaintext": "5AA5013E21014D02",
+      "frame": "5AA501DCF35FCA77EDECF5090006"
+    },
+    {
+      "id": "read_ble_power_state_ack_on",
+      "key": "app",
+      "counter": 7,
+      "wire_counter": 7,
+      "plaintext": "5AA502213E044D0100",
+      "frame": "5AA502CC5F15011D7C385DE1230007"
+    },
+    {
+      "id": "read_ble_power_state_ack_off",
+      "key": "app",
+      "counter": 7,
+      "wire_counter": 7,
+      "plaintext": "5AA502213E044D0000",
+      "frame": "5AA502CC5F15011C7C374FEB780007"
+    },
+    {
+      "id": "read_batt_percent",
+      "key": "app",
+      "counter": 8,
+      "wire_counter": 8,
+      "plaintext": "5AA5013E22013202",
+      "frame": "5AA501E2878E2B7F0EF4F93E0008"
+    },
+    {
+      "id": "read_batt_percent_ack_66",
+      "key": "app",
+      "counter": 9,
+      "wire_counter": 9,
+      "plaintext": "5AA502223E04324200",
+      "frame": "5AA5024BCE9535AD29596C63AC0009"
+    },
+    {
+      "id": "power_off_write",
+      "key": "app",
+      "counter": 10,
+      "wire_counter": 10,
+      "plaintext": "5AA5023E2003790100",
+      "frame": "5AA502EA2C60B32ED37A2F968C000A"
+    },
+    {
+      "id": "power_on_write",
+      "key": "app",
+      "counter": 12,
+      "wire_counter": 12,
+      "plaintext": "5AA5023E21031E0100",
+      "frame": "5AA502CF6C96404F195BC00EA7000C"
+    },
+    {
+      "id": "power_state_notification_on",
+      "key": "app",
+      "counter": 13,
+      "wire_counter": 13,
+      "plaintext": "5AA504213E2100024D0100",
+      "frame": "5AA504BB99B27FA874BEF6EAAF0540000D"
+    },
+    {
+      "id": "long_payload_3_blocks",
+      "key": "app",
+      "counter": 300,
+      "wire_counter": 300,
+      "plaintext": "5AA528213E0410000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627",
+      "frame": "5AA52853870FFFF05BEB0DE1467C6C44721F450CAECCC7D9BAA77D3628297EBFA39DF2A68769003DC4DBC1FBDABE8EB22DC5BB012C"
+    },
+    {
+      "id": "counter_high_16bit_values",
+      "key": "app",
+      "counter": 65534,
+      "wire_counter": 65534,
+      "plaintext": "5AA5013E20011002",
+      "frame": "5AA50161D511160085564F7EFFFE"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+build/
+captures/
+
+# Local config and signing material (never commit)
+local.properties
+*.jks
+*.keystore
+keystore.properties
+
+# Build outputs
+*.apk
+*.aab
+*.hprof
+
+# Android Studio (keep the shared wrapper in gradle/wrapper/)
+.idea/
+*.iml
+.cxx/
