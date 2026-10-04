@@ -236,3 +236,33 @@ def test_power_frames_match_official_app_capture():
     writes = [Packet(r.src, r.dst, r.cmd, r.idx, bytes.fromhex(r.data)) for r in conn.rows
               if r.cmd == Cmd.WRITE_NO_REPLY]
     assert writes == [POWER_OFF, POWER_ON, POWER_OFF]  # exactly what the official app sent, in order
+
+
+def test_cell_registers_decode_official_capture_values():
+    """Values read by the official app (BMS 0x40 x20 bytes, 0x35) and the layout seen in the live sweep."""
+    from f2probe.registers import BY_KEY
+
+    cells = bytes.fromhex("520F520F580F520F540F5A0F540F540F540FBE0E")
+    assert BY_KEY["cell_voltages"].decode(cells) == "[3922, 3922, 3928, 3922, 3924, 3930, 3924, 3924, 3924, 3774] mV (spread 156 mV)"
+    assert BY_KEY["cell_temps"].decode(bytes.fromhex("3030")) == "28 °C, 28 °C"
+    assert BY_KEY["cell_voltages"].count == 10 and BY_KEY["cell_voltages"].index == 0x40
+
+
+def test_kers_and_tcs_decode():
+    from f2probe.registers import BY_KEY
+
+    assert [BY_KEY["kers"].decode(bytes([v, 0])) for v in (0, 1, 2)] == ["weak", "medium", "strong"]
+    assert BY_KEY["tcs"].decode(b"\x01\x00") is True and BY_KEY["tcs"].decode(b"\x00\x00") is False
+
+
+def test_walk_mode_decode():
+    from f2probe.registers import BY_KEY
+
+    assert BY_KEY["walk_mode"].decode(b"\x01\x00") is True and BY_KEY["walk_mode"].decode(b"\x00\x00") is False
+
+
+def test_charging_is_status_word_bit8():
+    from f2probe.registers import BY_KEY
+
+    assert BY_KEY["charging"].decode(bytes.fromhex("0009")) is True   # seen while charging
+    assert BY_KEY["charging"].decode(bytes.fromhex("0008")) is False  # seen unplugged, and in the app captures

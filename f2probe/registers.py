@@ -39,7 +39,19 @@ def _bit(pos: int) -> Callable[[bytes], bool]:
     return lambda d: bool(_le16(d) & (1 << pos))
 
 
+def _cells(d: bytes) -> str:
+    """Per-cell voltages in mV, one u16 per cell (BMS 0x40..0x49, 10S pack), plus their spread."""
+    mv = [_le16(d[i : i + 2]) for i in range(0, len(d) - 1, 2)]
+    return f"{mv} mV (spread {max(mv) - min(mv)} mV)"
+
+
+def _cell_temps(d: bytes) -> str:
+    """Two sensors, one byte each, stored as degrees C + 20."""
+    return ", ".join(f"{b - 20} °C" for b in d[:2])
+
+
 _MODES = {0: "NORMAL", 1: "ECO", 2: "SPORT"}
+_KERS = {0: "weak", 1: "medium", 2: "strong"}
 
 
 @dataclass(frozen=True)
@@ -69,6 +81,7 @@ REGISTERS: list[Reg] = [
     Reg("lock_0x1d_bit1", "Lock bit (0x1D bit 1, legacy)", C, 0x1D, 1, _bit(1)),
     Reg("speed_limited", "Speed limited", C, 0x1D, 1, _bit(0)),
     Reg("activated", "Activated", C, 0x1D, 1, _bit(11)),
+    Reg("charging", "Charging (0x1D bit 8)", C, 0x1D, 1, _bit(8)),
     Reg("range_actual", "Range (actual)", C, 0x24, 1, lambda d: _le16(d) / 100, "km"),
     Reg("range_predicted", "Range (predicted)", C, 0x25, 1, lambda d: _le16(d) / 100, "km"),
     Reg("mileage", "Mileage", C, 0x29, 2, lambda d: round(_u32(d) / 1000, 1), "km"),
@@ -77,13 +90,17 @@ REGISTERS: list[Reg] = [
     Reg("avg_speed", "Average speed", C, 0x65, 1, lambda d: _le16(d) / 10, "km/h"),
     Reg("fw_ble", "BLE FW", C, 0x68, 1, _ver),
     Reg("mode", "Mode", C, 0x75, 1, lambda d: _MODES.get(_le16(d), f"0x{_le16(d):04X}")),
-    Reg("kers", "KERS level", C, 0x7B, 1, _le16),
+    Reg("walk_mode", "Walk mode (5 km/h)", C, 0x77, 1, lambda d: bool(_le16(d))),
+    Reg("kers", "KERS level", C, 0x7B, 1, lambda d: _KERS.get(_le16(d), f"unknown ({_le16(d)})")),
     Reg("cruise", "Cruise", C, 0x7C, 1, lambda d: bool(_le16(d))),
+    Reg("tcs", "Traction control (TCS)", C, 0xF3, 1, lambda d: bool(_le16(d))),
     Reg("tail_light", "Tail light", C, 0x7D, 1, _le16),
     Reg("bms_fw", "BMS FW", B, 0x17, 1, lambda d: f"0x{_le16(d):04X}"),
     Reg("battery", "Battery", B, 0x32, 1, _le16, "%"),
     Reg("battery_current", "Battery current", B, 0x33, 1, lambda d: _les16(d) / 100, "A"),
     Reg("battery_voltage", "Battery voltage", B, 0x34, 1, lambda d: _le16(d) / 100, "V"),
+    Reg("cell_voltages", "Cell voltages", B, 0x40, 10, _cells),
+    Reg("cell_temps", "Cell temperatures", B, 0x35, 1, _cell_temps),
     Reg("battery_health", "Battery health", B, 0x3B, 1, _le16, "%"),
 ]
 
@@ -98,6 +115,6 @@ STATUS_KEYS = [
 def describe_index(target: int, index: int) -> str | None:
     """Best-effort register name for a (target, index) pair, for annotating traces."""
     for r in REGISTERS:
-        if r.target == target and r.index <= index < r.index + r.count and r.key not in ("lock_0x1d_bit1", "speed_limited", "activated"):
+        if r.target == target and r.index <= index < r.index + r.count and r.key not in ("lock_0x1d_bit1", "speed_limited", "activated", "charging"):
             return r.label
     return None
