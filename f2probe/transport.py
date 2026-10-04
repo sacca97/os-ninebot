@@ -199,11 +199,19 @@ class Client:
         if self.app_key is None or self.init_reply is None:
             raise AuthError("need open() and a new app key")
         deadline = time.monotonic() + wait
+        told = False
         while time.monotonic() < deadline:
-            r = await self.request(Packet(Dev.PHONE, Dev.ES_BLE, Cmd.PING, 0, self.app_key), _reply(Cmd.PING), retries=0)
-            if r.idx == 1:
+            try:
+                r = await self.request(Packet(Dev.PHONE, Dev.ES_BLE, Cmd.PING, 0, self.app_key), _reply(Cmd.PING), retries=0)
+            except TimeoutError:
+                # No answer yet: keep trying every 2 s like the Android WeakModePairing does, instead of giving up on the first miss.
+                log.debug("no reply to SET_PWD, retrying")
+                r = None
+            if r is not None and r.idx == 1:
                 return
-            print("Waiting: press the scooter's power button to confirm pairing ...")
+            if not told:
+                print("Waiting: press the scooter's power button to confirm pairing ...")
+                told = True
             await asyncio.sleep(2.0)
         raise AuthError("pairing was not confirmed in time")
 

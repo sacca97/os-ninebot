@@ -266,3 +266,31 @@ def test_charging_is_status_word_bit8():
 
     assert BY_KEY["charging"].decode(bytes.fromhex("0009")) is True   # seen while charging
     assert BY_KEY["charging"].decode(bytes.fromhex("0008")) is False  # seen unplugged, and in the app captures
+
+
+def test_set_password_retries_after_silence(monkeypatch):
+    """The scooter may ignore the first SET_PWD frames; pairing must keep trying (like the Android app) and still stop on idx 1."""
+    import asyncio
+
+    from f2probe import transport
+
+    client = transport.Client(None, "NBScooter1234", APP_KEY, allow_pairing=True)
+    client.init_reply = Packet(Dev.ES_BLE, Dev.PHONE, Cmd.INIT, 1, bytes(30))
+    replies = [TimeoutError("silence"), TimeoutError("silence"), Packet(Dev.ES_BLE, Dev.PHONE, Cmd.PING, 0, b""),
+               Packet(Dev.ES_BLE, Dev.PHONE, Cmd.PING, 1, b"")]  # fmt: skip
+    sent = []
+
+    async def fake_request(p, match, **kw):
+        sent.append(p)
+        r = replies.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    async def no_sleep(_):
+        pass
+
+    monkeypatch.setattr(client, "request", fake_request)
+    monkeypatch.setattr(transport.asyncio, "sleep", no_sleep)
+    asyncio.run(client.set_password(wait=60))
+    assert len(sent) == 4 and all(p.cmd == Cmd.PING and p.data == APP_KEY for p in sent)
