@@ -1,17 +1,23 @@
 package openride.core.session
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import openride.core.crypto.KeyLabel
 import openride.core.crypto.SessionCrypto
 import openride.core.protocol.Cmd
@@ -163,8 +169,8 @@ class ScooterSession(
         }
     }
 
-    suspend fun read(reg: Reg, retries: Int = 2): String =
-        reg.decode(readRaw(reg.dev, reg.idx, retries, length = reg.words * 2))
+    suspend fun read(reg: Reg, retries: Int = 2, timeoutMs: Long = 3000): String =
+        reg.decode(readRaw(reg.dev, reg.idx, retries, timeoutMs, length = reg.words * 2))
 
     suspend fun powerState(retries: Int = 2, timeoutMs: Long = 3000): Boolean =
         Registers.powerOn(readRaw(Registers.POWER_STATE_DEV, Registers.POWER_STATE_IDX, retries, timeoutMs))
@@ -182,14 +188,26 @@ class ScooterSession(
     suspend fun setPower(on: Boolean, waitMs: Long = 15_000): PowerResult {
         if (powerState() == on) return PowerResult.ALREADY_IN_STATE
         if (!on) requireStandingStill()
-        gate.withLock { send(if (on) FrameGuard.POWER_ON else FrameGuard.POWER_OFF) }
-        val deadline = System.currentTimeMillis() + waitMs
-        while (System.currentTimeMillis() < deadline) {
-            delay(1000)
-            val now = try { powerState(retries = 0, timeoutMs = 1500) } catch (_: ScooterTimeout) { continue }
-            if (now == on) return PowerResult.CHANGED
+        // The scooter announces the change itself (notification 0x21, `02 4D <state>`), usually 3-4 s after the write, so
+        // that is what we wait on. We subscribe BEFORE the write goes out so it cannot be missed; a quick poll of the
+        // state register is only the fallback.
+        val changed = coroutineScope {
+            val notified = CompletableDeferred<Unit>()
+            val listener = launch(start = CoroutineStart.UNDISPATCHED) {
+                notifications.mapNotNull { Registers.powerFromNotification(it) }.first { it == on }
+                notified.complete(Unit)
+            }
+            gate.withLock { send(if (on) FrameGuard.POWER_ON else FrameGuard.POWER_OFF) }
+            val ok = withTimeoutOrNull(waitMs) {
+                while (withTimeoutOrNull(CONFIRM_POLL_MS) { notified.await() } == null) {
+                    try { if (powerState(retries = 0, timeoutMs = 800) == on) break } catch (_: ScooterTimeout) { /* boards busy or rebooting */ }
+                }
+                true
+            } ?: false
+            listener.cancel()
+            ok
         }
-        return PowerResult.NO_CHANGE
+        return if (changed) PowerResult.CHANGED else PowerResult.NO_CHANGE
     }
 
     private suspend fun requireStandingStill() {
@@ -235,5 +253,8 @@ class ScooterSession(
 
         /** The longest single read the official app is seen to use (ten cell voltages). */
         const val MAX_READ_BYTES = 20
+
+        /** Fallback poll while waiting for a power change to be reported. */
+        const val CONFIRM_POLL_MS = 300L
     }
 }

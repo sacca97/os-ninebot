@@ -381,3 +381,11 @@ look like a lock-out if hammered: keep to one attempt per connection and add a v
 - Scanning lives on a secondary "Add scooter" page (also under More). Picking a scooter that already has a credential collapses the stack
   to the home screen; otherwise the credential screen opens first and "Log in and open dashboard" also collapses to home. Back from home
   leaves the app. App settings are under More.
+
+## Power on/off speed (status)
+- Confirmation now waits on the scooter's own change notification (cmd 0x21, `02 4D <state>`), subscribed before the write goes out, with
+  a 300 ms poll of 0x4D as fallback (was: a fixed 1 s sleep between polls). Unit-tested with a fake scooter that goes silent after the write.
+- While a power command runs the poll loop stands down, and polled reads fail fast (1 s, one retry, instead of 3 x 3 s) and stop as soon
+  as the scooter reports it is off. Before, the poll loop kept reading dead controller registers, each holding the single request slot
+  for up to 9 s, which delayed the power-state checks. On a power-on notification the loop wakes at once.
+- The scooter's own switching time (docs say 3-4 s) is a floor we cannot change. ❓ not yet timed on the real scooter.

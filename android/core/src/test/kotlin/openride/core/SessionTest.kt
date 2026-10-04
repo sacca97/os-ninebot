@@ -33,7 +33,12 @@ class FakeScooterLink(
     var speed: Int = 0,
     /** When set the scooter never answers the speed registers. */
     var speedSilent: Boolean = false,
+    /** Report power changes with a 0x21 notification, like the real scooter. */
+    var notifyOnPowerChange: Boolean = false,
+    /** Stop answering power-state reads once a power write was seen (forces the notification path). */
+    var muteStateReadsAfterWrite: Boolean = false,
 ) : ScooterLink {
+    private var wrote = false
     private val out = Channel<ByteArray>(Channel.UNLIMITED)
     override val incoming: Flow<ByteArray> = out.receiveAsFlow()
     val sent = mutableListOf<Packet>()
@@ -69,7 +74,7 @@ class FakeScooterLink(
         when {
             p.cmd == Cmd.AUTH -> reply(Packet(Dev.BLE, Dev.PHONE, Cmd.AUTH, 1), c + 1)
             p.cmd == Cmd.READ && p.dst == Dev.BLE && p.idx == Registers.POWER_STATE_IDX ->
-                reply(Packet(Dev.BLE, Dev.PHONE, Cmd.READ_ACK, p.idx, byteArrayOf(if (powered) 1 else 0, 0)), c + 1)
+                if (!(wrote && muteStateReadsAfterWrite)) reply(Packet(Dev.BLE, Dev.PHONE, Cmd.READ_ACK, p.idx, byteArrayOf(if (powered) 1 else 0, 0)), c + 1)
             p.cmd == Cmd.READ && p.dst == Dev.BATTERY && p.idx == 0x32 ->
                 reply(Packet(Dev.BATTERY, Dev.PHONE, Cmd.READ_ACK, p.idx, byteArrayOf(66, 0)), c + 1)
             p.cmd == Cmd.READ && p.dst == Dev.CONTROLLER && (p.idx == 0x65 || p.idx == 0x26) ->
@@ -79,8 +84,13 @@ class FakeScooterLink(
                 }
             p.cmd == Cmd.READ && p.dst == Dev.BATTERY && p.idx == 0x40 && p.data[0].toInt() == 20 ->
                 reply(Packet(Dev.BATTERY, Dev.PHONE, Cmd.READ_ACK, p.idx, ByteArray(20) { if (it % 2 == 0) 0x52 else 0x0F }), c + 1)
-            p == FrameGuard.POWER_OFF -> powered = false
-            p == FrameGuard.POWER_ON -> powered = true
+            p == FrameGuard.POWER_OFF || p == FrameGuard.POWER_ON -> {
+                wrote = true
+                powered = p == FrameGuard.POWER_ON
+                if (notifyOnPowerChange) {
+                    reply(Packet(Dev.BLE, Dev.PHONE, 0x21, 0, byteArrayOf(0x02, 0x4D, if (powered) 1 else 0, 0)), c + 1)
+                }
+            }
         }
     }
 }
@@ -183,5 +193,26 @@ class SessionTest {
             assertTrue(out.startsWith("3922 3922"))
         }
         assertEquals(1, link.sent.count { it.cmd == Cmd.READ && it.dst == Dev.BATTERY && it.idx == 0x40 })
+    }
+
+    @Test fun powerChangeIsConfirmedByNotificationNotPolling() {
+        // State reads are silent after the write, so only the scooter's own notification can confirm.
+        val link = FakeScooterLink("NBFAKE0000001A", pw, powered = true, notifyOnPowerChange = true, muteStateReadsAfterWrite = true)
+        val t0 = System.currentTimeMillis()
+        run(link, power = true) { s ->
+            s.init(); s.login(pw)
+            assertEquals(PowerResult.CHANGED, s.setPower(false, waitMs = 10_000))
+        }
+        assertTrue("took ${System.currentTimeMillis() - t0} ms", System.currentTimeMillis() - t0 < 3_000)
+        assertEquals(1, link.sent.count { it.cmd == Cmd.WRITE_NO_REPLY })
+    }
+
+    @Test fun noChangeReportedMeansNoChangeAndNoResend() {
+        val link = FakeScooterLink("NBFAKE0000001A", pw, powered = true, muteStateReadsAfterWrite = true)
+        run(link, power = true) { s ->
+            s.init(); s.login(pw)
+            assertEquals(PowerResult.NO_CHANGE, s.setPower(false, waitMs = 1_500))
+        }
+        assertEquals(1, link.sent.count { it.cmd == Cmd.WRITE_NO_REPLY })
     }
 }

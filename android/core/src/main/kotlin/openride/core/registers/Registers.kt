@@ -61,6 +61,12 @@ object Registers {
         SpeedGuard(Dev.CONTROLLER, 0x26, "Speed register 0x26") { "raw $it" },
     )
 
+    /** The scooter reports a power change itself: cmd 0x21 from the BLE board, data `02 4D <u16 state>` (seen in the captures). */
+    fun powerFromNotification(p: openride.core.protocol.Packet): Boolean? =
+        if (p.data.size >= 4 && p.data[0].toInt() == 0x02 && (p.data[1].toInt() and 0xFF) == POWER_STATE_IDX) {
+            ((p.data[2].toInt() and 0xFF) or ((p.data[3].toInt() and 0xFF) shl 8)) == 1
+        } else null
+
     fun powerOn(raw: ByteArray): Boolean = u(raw) == 1L
 
     val SERIAL = Reg("serial", "Serial", Dev.CONTROLLER, 0x10, 7, static = true) {

@@ -9,6 +9,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -85,6 +87,9 @@ class DashboardViewModel @Inject constructor(
 
     private var connectedTo: String? = null
 
+    /** Wakes the poll loop early (the scooter just reported it is on). */
+    private val wake = Channel<Unit>(Channel.CONFLATED)
+
     /**
      * Connects to the selected scooter, else to the one saved last (no scan). Idempotent: calling it again for the same
      * scooter does nothing; for a different one it switches. With nothing saved it just reports [DashboardUiState.noScooter].
@@ -124,10 +129,9 @@ class DashboardViewModel @Inject constructor(
                 settings.setLastScooter(ad.address, ad.name) // next launch connects without scanning
                 launch {
                     s.notifications.collect { n ->
-                        if (n.data.size >= 4 && n.data[0].toInt() == 0x02 && n.data[1].toInt() == Registers.POWER_STATE_IDX) {
-                            val on = (n.data[2].toInt() and 0xFF) or ((n.data[3].toInt() and 0xFF) shl 8)
-                            _ui.update { it.copy(power = on == 1) }
-                        }
+                        val on = Registers.powerFromNotification(n) ?: return@collect
+                        _ui.update { it.copy(power = on) }
+                        if (on) wake.trySend(Unit) // start reading at once instead of at the next tick
                     }
                 }
                 poll(s)
@@ -162,6 +166,7 @@ class DashboardViewModel @Inject constructor(
         var cycle = 0
         while (currentCoroutineContext().isActive) {
             foreground.first { it } // suspended here while the app is in the background
+            if (_ui.value.powerBusy) { delay(100); continue } // a power command owns the link: no competing reads
             val started = System.currentTimeMillis()
             val on = s.powerState()
             _ui.update { it.copy(power = on) }
@@ -176,14 +181,17 @@ class DashboardViewModel @Inject constructor(
                 }
             }
             // Fixed period, whatever the reads took: nothing on the scooter changes faster than this.
-            delay((CYCLE_MS - (System.currentTimeMillis() - started)).coerceAtLeast(0))
+            withTimeoutOrNull((CYCLE_MS - (System.currentTimeMillis() - started)).coerceAtLeast(0)) { wake.receive() }
             cycle++
         }
     }
 
     private suspend fun readInto(s: ScooterSession, regs: List<Reg>) {
         for (r in regs) {
-            val v = try { s.read(r) } catch (_: ScooterTimeout) { "n/a" }
+            // The scooter just powered off (reported by notification): its boards will not answer, stop reading.
+            if (_ui.value.power == false || _ui.value.powerBusy) return
+            // Fail fast: a polled value is refreshed a second later anyway, so one retry at 1 s, not 3 tries at 3 s each.
+            val v = try { s.read(r, retries = 1, timeoutMs = POLL_TIMEOUT_MS) } catch (_: ScooterTimeout) { "n/a" }
             _ui.update { it.copy(values = it.values + (r.key to v)) }
         }
     }
@@ -213,6 +221,7 @@ class DashboardViewModel @Inject constructor(
 
     private companion object {
         const val IDLE_DISCONNECT_MS = 60_000L
+        const val POLL_TIMEOUT_MS = 1_000L
         const val CYCLE_MS = 1_000L // fast values every second
         const val SLOW_EVERY = 5 // the rest every 5 s
         val FAST = setOf("batt_pct", "batt_v", "batt_a", "status", "charging", "avg_speed", "speed_26", "mode", "range")
