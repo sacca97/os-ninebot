@@ -68,18 +68,18 @@ fun DashboardScreen(
             Button({ vm.start() }) { Text("Reconnect") }
         }
         if (st.connected) {
-            val on = st.power == true
+            val on = st.power == true || st.profile.power == null
             val charging = st.values["charging"] == "yes"
             Text(st.name, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 8.dp))
             Text(
-                when (st.power) { true -> if (charging) "On · charging" else "On"; false -> "Off"; null -> "Reading…" },
+                when (st.power) { true -> if (charging) "On · charging" else "On"; false -> "Off"; null -> if (st.profile.power == null) "Connected" else "Reading…" },
                 style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
                 Tile("Battery", if (on) st.values["batt_pct"] else null, if (charging) "charging" else null, Modifier.weight(1f), onBattery)
                 Tile("Range", if (on) st.values["range"] else null, null, Modifier.weight(1f), onRange)
             }
-            if (settings.powerControl && st.power != null) {
+            if (settings.powerControl && st.profile.power != null && st.power != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 24.dp)) {
                     Button({ vm.setPower(true) }, enabled = !st.powerBusy && st.power == false, modifier = Modifier.weight(1f).height(56.dp)) {
                         Text("Power on")

@@ -19,13 +19,14 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import com.sacca.openride.core.crypto.KeyLabel
-import com.sacca.openride.core.crypto.SessionCrypto
+import com.sacca.openride.core.profile.DeviceProfile
+import com.sacca.openride.core.profile.DeviceProfiles
+import com.sacca.openride.core.profile.unsignedLittleEndian
 import com.sacca.openride.core.protocol.Cmd
 import com.sacca.openride.core.protocol.Dev
 import com.sacca.openride.core.protocol.FrameReassembler
 import com.sacca.openride.core.protocol.Packet
 import com.sacca.openride.core.registers.Reg
-import com.sacca.openride.core.registers.Registers
 import com.sacca.openride.core.safety.FrameGuard
 
 class LinkClosedException(cause: Throwable? = null) : RuntimeException("Bluetooth link closed", cause)
@@ -49,8 +50,9 @@ class ScooterSession(
     private val allowPower: Boolean = false,
     private val allowPairing: Boolean = false,
     private val onFrame: ((FrameEvent) -> Unit)? = null,
+    val profile: DeviceProfile = DeviceProfiles.default,
 ) {
-    private val crypto = SessionCrypto(deviceName.toByteArray(Charsets.UTF_8))
+    private val crypto = profile.encryption.create(deviceName)
     private val reassembler = FrameReassembler()
     private val replies = Channel<Packet>(Channel.UNLIMITED)
     private val gate = Mutex()
@@ -68,7 +70,7 @@ class ScooterSession(
                         val o = crypto.open(frame) ?: continue
                         val p = o.packet ?: continue
                         onFrame?.invoke(FrameEvent(false, p, o.key, o.counter, frame))
-                        if (p.cmd == NOTIFY_CMD) _notifications.tryEmit(p) else replies.trySend(p)
+                        if (p.cmd == profile.power?.notificationCommand) _notifications.tryEmit(p) else replies.trySend(p)
                     }
                 }
                 replies.close(LinkClosedException())
@@ -170,15 +172,19 @@ class ScooterSession(
     }
 
     suspend fun read(reg: Reg, retries: Int = 2, timeoutMs: Long = 3000): String =
-        reg.decode(readRaw(reg.dev, reg.idx, retries, timeoutMs, length = reg.words * 2))
+        reg.decode(readRaw(reg.dev, reg.idx, retries, timeoutMs, length = reg.byteCount))
 
-    suspend fun powerState(retries: Int = 2, timeoutMs: Long = 3000): Boolean =
-        Registers.powerOn(readRaw(Registers.POWER_STATE_DEV, Registers.POWER_STATE_IDX, retries, timeoutMs))
+    suspend fun powerState(retries: Int = 2, timeoutMs: Long = 3000): Boolean {
+        val power = requireNotNull(profile.power) { "power state unsupported for ${profile.name}" }
+        return power.isOn(readRaw(power.device, power.register, retries, timeoutMs, power.bytes))
+    }
+
+    fun powerFromNotification(p: Packet): Boolean? = profile.power?.fromNotification(p)
 
     // -- power ----------------------------------------------------------
 
     /**
-     * Powering OFF is interlocked: the speed registers ([Registers.SPEED_GUARD]) are read first and the write only
+     * Powering OFF is interlocked: the speed registers configured in the device profile are read first and the write only
      * goes out if every one reads zero. A non-zero value, or a register that cannot be read, throws [PowerRefused]
      * and sends nothing (fail closed).
      *
@@ -186,6 +192,7 @@ class ScooterSession(
      * to [waitMs] and reports [PowerResult.NO_CHANGE] if it did not flip (does not resend).
      */
     suspend fun setPower(on: Boolean, waitMs: Long = 15_000): PowerResult {
+        val power = requireNotNull(profile.power) { "power control unsupported for ${profile.name}" }
         if (powerState() == on) return PowerResult.ALREADY_IN_STATE
         if (!on) requireStandingStill()
         // The scooter announces the change itself (notification 0x21, `02 4D <state>`), usually 3-4 s after the write, so
@@ -194,10 +201,10 @@ class ScooterSession(
         val changed = coroutineScope {
             val notified = CompletableDeferred<Unit>()
             val listener = launch(start = CoroutineStart.UNDISPATCHED) {
-                notifications.mapNotNull { Registers.powerFromNotification(it) }.first { it == on }
+                notifications.mapNotNull { power.fromNotification(it) }.first { it == on }
                 notified.complete(Unit)
             }
-            gate.withLock { send(if (on) FrameGuard.POWER_ON else FrameGuard.POWER_OFF) }
+            gate.withLock { send(if (on) power.on else power.off) }
             val ok = withTimeoutOrNull(waitMs) {
                 while (withTimeoutOrNull(CONFIRM_POLL_MS) { notified.await() } == null) {
                     try { if (powerState(retries = 0, timeoutMs = 800) == on) break } catch (_: ScooterTimeout) { /* boards busy or rebooting */ }
@@ -211,14 +218,17 @@ class ScooterSession(
     }
 
     private suspend fun requireStandingStill() {
-        for (g in Registers.SPEED_GUARD) {
+        val checks = requireNotNull(profile.power).zeroChecks
+        if (checks.isEmpty()) throw PowerRefused("No standstill checks configured for ${profile.name}")
+        for (key in checks) {
+            val g = profile.reading(key)
             val raw = try {
-                readRaw(g.dev, g.idx, retries = 1, timeoutMs = 1500)
+                readRaw(g.dev, g.idx, retries = 1, timeoutMs = 1500, length = g.byteCount)
             } catch (_: ScooterTimeout) {
                 throw PowerRefused("Could not read ${g.label}, so it is not known whether the scooter is standing still. Not powering off.")
             }
-            val v = raw.indices.fold(0L) { acc, i -> acc or ((raw[i].toLong() and 0xFF) shl (8 * i)) }
-            if (v != 0L) throw PowerRefused("${g.label} reads ${g.show(v)}, not zero. Not powering off.")
+            if (raw.size != g.byteCount) throw PowerRefused("Invalid ${g.label} response; not powering off.")
+            if (unsignedLittleEndian(raw) != 0L) throw PowerRefused("${g.label} reads ${g.decode(raw)}, not zero. Not powering off.")
         }
     }
 
@@ -249,8 +259,6 @@ class ScooterSession(
     }
 
     companion object {
-        const val NOTIFY_CMD = 0x21
-
         /** The longest single read the official app is seen to use (ten cell voltages). */
         const val MAX_READ_BYTES = 20
 

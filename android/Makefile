@@ -71,7 +71,15 @@ release:  ## build the signed, minified release APK (needs `make keystore` once)
 	@echo "-> $(APK_RELEASE)"
 
 install-release: release  ## build and install the release app (next to the debug one)
-	$(ADB) install -r $(APK_RELEASE) || { echo "If this says INSTALL_FAILED_UPDATE_INCOMPATIBLE, a copy signed with a different key is installed: make uninstall-release (wipes its data) and retry."; exit 1; }
+	@output=$$($(ADB) install -r $(APK_RELEASE) 2>&1); status=$$?; \
+	 printf '%s\n' "$$output"; \
+	 if [ $$status -ne 0 ]; then \
+	   case "$$output" in \
+	     *"more than one device/emulator"*) echo "Select a device: make devices, then make install-release SERIAL=<adb-serial>." ;; \
+	     *INSTALL_FAILED_UPDATE_INCOMPATIBLE*) echo "A copy signed with a different key is installed: make uninstall-release$(if $(SERIAL), SERIAL=$(SERIAL)) (wipes its data) and retry." ;; \
+	   esac; \
+	 fi; \
+	 exit $$status
 
 run-release: VARIANT = release
 run-release: install-release start  ## install the release app, then launch it

@@ -22,3 +22,14 @@ Power control is on by default (verified on a real F2 Pro) and can be disabled i
 
 Stack: Kotlin 2.2, Compose + Material 3, Hilt (KSP), DataStore, version catalog (`gradle/libs.versions.toml`),
 per-screen `@HiltViewModel`s, `collectAsStateWithLifecycle`, back stack as state (`Navigator`).
+
+Device-specific GATT, protocol selection, register addresses/decoding and power
+mappings live in [`profiles/`](profiles/README.md). JSON is validated and compiled
+into Kotlin during the build (requires Python 3); there is no runtime parser.
+The F2 Pro profile preserves the existing behavior. The profile refactor is
+unverified on hardware; controller `0x26` remains an experimental raw reading
+whose meaning and scale have not been confirmed while moving.
+
+To submit support for a new model, follow the repository's
+[contribution guide](../CONTRIBUTING.md), including capture handling, evidence,
+protocol coverage and the PR checklist.

@@ -17,7 +17,7 @@ class Connection(val session: ScooterSession, val info: InitInfo)
 /** Opens a GATT link + session and runs INIT. Also holds the app-wide scooter selection and login cool-down. */
 @Singleton
 class ScooterConnector @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val settings: SettingsRepository,
     private val frameLog: FrameLog,
 ) {
@@ -33,12 +33,13 @@ class ScooterConnector @Inject constructor(
     /** [scope] owns the session's reader coroutine; closing the session cancels it. */
     suspend fun connect(scope: CoroutineScope, pairing: Boolean = false): Connection {
         val ad = checkNotNull(_selected.value) { "no scooter selected" }
-        val link = AndroidGattLink.open(context, ad.device)
+        val link = AndroidGattLink.open(context, ad.device, ad.profile.gatt)
         val session = ScooterSession(
             link, ad.name,
             allowPower = settings.current().powerControl,
             allowPairing = pairing,
             onFrame = frameLog::add,
+            profile = ad.profile,
         )
         session.start(scope)
         try {

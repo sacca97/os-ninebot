@@ -27,7 +27,8 @@ import com.sacca.openride.app.data.ScooterConnector
 import com.sacca.openride.app.data.SettingsRepository
 import com.sacca.openride.app.ui.describe
 import com.sacca.openride.core.registers.Reg
-import com.sacca.openride.core.registers.Registers
+import com.sacca.openride.core.profile.DeviceProfile
+import com.sacca.openride.core.profile.DeviceProfiles
 import com.sacca.openride.core.session.CredentialRejected
 import com.sacca.openride.core.session.PowerResult
 import com.sacca.openride.core.session.ScooterSession
@@ -36,6 +37,7 @@ import javax.inject.Inject
 
 data class DashboardUiState(
     val name: String = "",
+    val profile: DeviceProfile = DeviceProfiles.default,
     /** Nothing saved (or its credential is gone): the home screen offers to add one instead of connecting. */
     val noScooter: Boolean = false,
     /** Not connecting: the radio is off / the permission is missing. The screen offers the fix instead of an error. */
@@ -52,7 +54,7 @@ data class DashboardUiState(
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val connector: ScooterConnector,
     private val store: CredentialStore,
     private val settings: SettingsRepository,
@@ -90,6 +92,7 @@ class DashboardViewModel @Inject constructor(
     fun clearMessages() = _ui.update { it.copy(error = null, notice = null) }
 
     private var connectedTo: String? = null
+    private var connectedProfile: String? = null
 
     init {
         // Connect as soon as the radio comes on; when it goes off, drop quietly (no "link closed" error).
@@ -118,7 +121,7 @@ class DashboardViewModel @Inject constructor(
         if (connector.inCooldown()) return
         val wanted = connector.selected.value?.address
         if (connJob?.isActive == true) {
-            if (wanted == null || wanted == connectedTo) return
+            if (wanted == null || wanted == connectedTo && connector.selected.value?.profile?.id == connectedProfile) return
             stop() // another scooter was picked
         }
         _ui.update { DashboardUiState() }
@@ -137,7 +140,7 @@ class DashboardViewModel @Inject constructor(
                 if (ad == null) {
                     // After a restart: find the saved scooter with a short scan (see Scanner.find for why not by address).
                     _ui.update { it.copy(name = savedName.orEmpty(), busy = "Looking for scooter…") }
-                    ad = Scanner.find(context, savedName!!)
+                    ad = Scanner.find(context, savedName!!, profile = settings.lastProfile())
                     if (ad == null) {
                         _ui.update { it.copy(error = "Scooter not found. Is it on and in range, and is the other app closed (it allows one connection)?") }
                         return@launch
@@ -145,7 +148,8 @@ class DashboardViewModel @Inject constructor(
                     connector.select(ad)
                 }
                 connectedTo = ad.address
-                _ui.update { it.copy(name = ad.name, busy = "Connecting…") }
+                connectedProfile = ad.profile.id
+                _ui.update { it.copy(name = ad.name, profile = ad.profile, busy = "Connecting…") }
                 val conn = connector.connect(this)
                 session = conn.session
                 val s = conn.session
@@ -157,10 +161,10 @@ class DashboardViewModel @Inject constructor(
                 s.login(pw) // one attempt, no retry
                 if (fromPending) store.promotePending(conn.info.serial)
                 _ui.update { it.copy(busy = null, connected = true) }
-                settings.setLastScooter(ad.address, ad.name) // next launch connects without scanning
+                settings.setLastScooter(ad.address, ad.name, ad.profile) // next launch connects without scanning
                 launch {
                     s.notifications.collect { n ->
-                        val on = Registers.powerFromNotification(n) ?: return@collect
+                        val on = s.powerFromNotification(n) ?: return@collect
                         _ui.update { it.copy(power = on) }
                         if (on) wake.trySend(Unit) // start reading at once instead of at the next tick
                     }
@@ -190,7 +194,7 @@ class DashboardViewModel @Inject constructor(
     /**
      * One request in flight at a time (the scooter is not known to cope with more), so the cycle time is the number
      * of reads x ~60 ms. Order: power first, then what the screen shows, then the slow-changing values, and the
-     * static ones (serial, firmware) last. One cycle every [CYCLE_MS]; the FAST set each cycle, the rest every [SLOW_EVERY] cycles.
+     * static ones (serial, firmware) last. One cycle every [CYCLE_MS]; the profile’s fast readings each cycle, the rest every [SLOW_EVERY] cycles.
      */
     private suspend fun poll(s: ScooterSession) {
         var staticsDone = false
@@ -199,15 +203,15 @@ class DashboardViewModel @Inject constructor(
             foreground.first { it } // suspended here while the app is in the background
             if (_ui.value.powerBusy) { delay(100); continue } // a power command owns the link: no competing reads
             val started = System.currentTimeMillis()
-            val on = s.powerState()
+            val on = if (s.profile.power != null) s.powerState() else null
             _ui.update { it.copy(power = on) }
-            if (on) {
+            if (on != false) {
                 val exp = settings.current().showExperimental
-                val live = Registers.all.filter { !it.static && (exp || !it.experimental) }
-                val (fast, slow) = live.partition { it.key in FAST }
+                val live = s.profile.readings.filter { !it.static && (exp || !it.experimental) }
+                val (fast, slow) = live.partition { it.fast }
                 readInto(s, if (cycle % SLOW_EVERY == 0) fast + slow else fast)
                 if (!staticsDone) {
-                    readInto(s, Registers.all.filter { it.static })
+                    readInto(s, s.profile.readings.filter { it.static })
                     staticsDone = true
                 }
             }
@@ -255,6 +259,5 @@ class DashboardViewModel @Inject constructor(
         const val POLL_TIMEOUT_MS = 1_000L
         const val CYCLE_MS = 1_000L // fast values every second
         const val SLOW_EVERY = 5 // the rest every 5 s
-        val FAST = setOf("batt_pct", "batt_v", "batt_a", "status", "charging", "avg_speed", "speed_26", "mode", "range")
     }
 }

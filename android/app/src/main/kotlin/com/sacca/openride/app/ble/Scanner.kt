@@ -13,10 +13,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
-import com.sacca.openride.core.protocol.Ble
+import com.sacca.openride.core.profile.DeviceProfile
+import com.sacca.openride.core.profile.DeviceProfiles
 
 /** [name] comes from the scan record: it is key material, so never from BluetoothDevice.name. */
-class ScooterAd(val name: String, val device: BluetoothDevice, val rssi: Int) {
+class ScooterAd(val name: String, val device: BluetoothDevice, val rssi: Int, val profile: DeviceProfile = DeviceProfiles.default) {
     val address: String get() = device.address
 }
 
@@ -29,10 +30,10 @@ object Scanner {
      * Connecting needs a device object that came from a scan: it carries the address TYPE (the scooter uses a random address),
      * which `getRemoteDevice(address)` loses, so a connection opened from a saved address string just hangs.
      */
-    suspend fun find(context: Context, name: String, timeoutMs: Long = 8_000): ScooterAd? =
-        withTimeoutOrNull(timeoutMs) { scan(context).first { it.name == name } }
+    suspend fun find(context: Context, name: String, timeoutMs: Long = 8_000, profile: DeviceProfile = DeviceProfiles.default): ScooterAd? =
+        withTimeoutOrNull(timeoutMs) { scan(context, profile).first { it.name == name } }
 
-    fun scan(context: Context): Flow<ScooterAd> = callbackFlow {
+    fun scan(context: Context, profile: DeviceProfile = DeviceProfiles.default): Flow<ScooterAd> = callbackFlow {
         val scanner = adapter(context)?.bluetoothLeScanner
         if (scanner == null) {
             close(IllegalStateException("Bluetooth is off or unavailable"))
@@ -41,14 +42,14 @@ object Scanner {
         val cb = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, r: ScanResult) {
                 val name = r.scanRecord?.deviceName ?: return
-                trySend(ScooterAd(name, r.device, r.rssi))
+                trySend(ScooterAd(name, r.device, r.rssi, profile))
             }
 
             override fun onScanFailed(errorCode: Int) {
                 close(IllegalStateException("Scan failed ($errorCode)"))
             }
         }
-        val filter = ScanFilter.Builder().setManufacturerData(Ble.MANUFACTURER_ID, ByteArray(0)).build()
+        val filter = ScanFilter.Builder().setManufacturerData(profile.manufacturerId, ByteArray(0)).build()
         scanner.startScan(listOf(filter), ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), cb)
         awaitClose { scanner.stopScan(cb) }
     }

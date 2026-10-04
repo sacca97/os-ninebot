@@ -19,13 +19,6 @@ object Dev {
     const val PHONE = 0x3E
 }
 
-object Ble {
-    const val NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
-    const val NUS_WRITE = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
-    const val NUS_NOTIFY = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
-    const val MANUFACTURER_ID = 0x424E
-}
-
 /** Plaintext frame: `5A A5 | LEN | SRC | DST | CMD | IDX | DATA[LEN]`. */
 class Packet(val src: Int, val dst: Int, val cmd: Int, val idx: Int, data: ByteArray = ByteArray(0)) {
     val data: ByteArray = data.copyOf()

@@ -17,17 +17,20 @@ import com.sacca.openride.app.data.CredentialStore
 import com.sacca.openride.app.data.ScooterConnector
 import com.sacca.openride.app.ui.nav.Navigator
 import com.sacca.openride.app.ui.nav.Screen
+import com.sacca.openride.core.profile.DeviceProfile
+import com.sacca.openride.core.profile.DeviceProfiles
 import javax.inject.Inject
 
 data class ScanUiState(
     val scanning: Boolean = false,
+    val profile: DeviceProfile = DeviceProfiles.default,
     val scans: List<ScooterAd> = emptyList(),
     val error: String? = null,
 )
 
 @HiltViewModel
 class ScanViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val connector: ScooterConnector,
     private val store: CredentialStore,
     private val navigator: Navigator,
@@ -38,10 +41,10 @@ class ScanViewModel @Inject constructor(
 
     fun start() {
         if (job?.isActive == true) return
-        _ui.update { ScanUiState(scanning = true) }
+        _ui.update { ScanUiState(scanning = true, profile = it.profile) }
         job = viewModelScope.launch {
             try {
-                Scanner.scan(context).collect { ad ->
+                Scanner.scan(context, _ui.value.profile).collect { ad ->
                     _ui.update { st ->
                         st.copy(scans = (st.scans.filter { it.address != ad.address } + ad).sortedByDescending { it.rssi })
                     }
@@ -54,6 +57,12 @@ class ScanViewModel @Inject constructor(
                 _ui.update { it.copy(scanning = false) }
             }
         }
+    }
+
+    fun chooseProfile(profile: DeviceProfile) {
+        stop()
+        _ui.update { ScanUiState(profile = profile) }
+        start()
     }
 
     fun rescan() { stop(); start() }

@@ -17,7 +17,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
-import com.sacca.openride.core.protocol.Ble
+import com.sacca.openride.core.profile.GattProfile
+import com.sacca.openride.core.profile.WriteMode
+import com.sacca.openride.core.profile.ReceiveMode
 import com.sacca.openride.core.session.ScooterLink
 import java.util.UUID
 
@@ -25,7 +27,7 @@ class BleConnectException(message: String) : RuntimeException(message)
 
 /** Raw BluetoothGatt wrapped in coroutines: connect, MTU, discover, enable notify, serialised writes. */
 @SuppressLint("MissingPermission")
-class AndroidGattLink private constructor() : ScooterLink {
+class AndroidGattLink private constructor(private val profile: GattProfile) : ScooterLink {
     private val rx = Channel<ByteArray>(Channel.UNLIMITED)
     override val incoming: Flow<ByteArray> = rx.receiveAsFlow()
     override var maxChunk: Int = 20
@@ -74,12 +76,13 @@ class AndroidGattLink private constructor() : ScooterLink {
         }
 
         override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray) {
-            rx.trySend(value)
+            if (c.uuid == UUID.fromString(profile.notify)) rx.trySend(value)
         }
 
         @Deprecated("Deprecated in API 33")
+        @Suppress("DEPRECATION") // Required for the notification callback on Android 12 and earlier.
         override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic) {
-            if (Build.VERSION.SDK_INT < 33) c.value?.let { rx.trySend(it.copyOf()) }
+            if (Build.VERSION.SDK_INT < 33 && c.uuid == UUID.fromString(profile.notify)) c.value?.let { rx.trySend(it.copyOf()) }
         }
     }
 
@@ -91,22 +94,25 @@ class AndroidGattLink private constructor() : ScooterLink {
         // Shortest connection interval: every request/response costs at least one interval each way.
         g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
         // A bigger MTU lets each frame go out as a single write (one callback instead of one per 20 bytes).
-        if (!g.requestMtu(247)) mtuDone.complete(Unit)
+        if (!g.requestMtu(profile.mtu)) mtuDone.complete(Unit)
         withTimeoutOrNull(1_500) { mtuDone.await() }
         // Wait for onServicesDiscovered before anything else.
         if (!g.discoverServices()) throw BleConnectException("discoverServices failed")
         val st = withTimeout(10_000) { servicesDone.await() }
         if (st != BluetoothGatt.GATT_SUCCESS) throw BleConnectException("service discovery status=$st")
-        val svc = g.getService(UUID.fromString(Ble.NUS_SERVICE)) ?: throw BleConnectException("UART service missing")
-        writeChar = svc.getCharacteristic(UUID.fromString(Ble.NUS_WRITE)) ?: throw BleConnectException("write char missing")
-        val notify = svc.getCharacteristic(UUID.fromString(Ble.NUS_NOTIFY)) ?: throw BleConnectException("notify char missing")
-        g.setCharacteristicNotification(notify, true)
+        val svc = g.getService(UUID.fromString(profile.service)) ?: throw BleConnectException("UART service missing")
+        writeChar = svc.getCharacteristic(UUID.fromString(profile.write)) ?: throw BleConnectException("write char missing")
+        val notify = svc.getCharacteristic(UUID.fromString(profile.notify)) ?: throw BleConnectException("notify char missing")
+        if (!g.setCharacteristicNotification(notify, true)) throw BleConnectException("enabling notifications failed")
+        val notifyValue = if (profile.receiveMode == ReceiveMode.INDICATION)
+            android.bluetooth.BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+        else android.bluetooth.BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
         val cccd = notify.getDescriptor(CCCD) ?: throw BleConnectException("CCCD missing")
         val ok = if (Build.VERSION.SDK_INT >= 33) {
-            g.writeDescriptor(cccd, android.bluetooth.BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == android.bluetooth.BluetoothStatusCodes.SUCCESS
+            g.writeDescriptor(cccd, notifyValue) == android.bluetooth.BluetoothStatusCodes.SUCCESS
         } else {
             @Suppress("DEPRECATION")
-            run { cccd.value = android.bluetooth.BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE; g.writeDescriptor(cccd) }
+            run { cccd.value = notifyValue; g.writeDescriptor(cccd) }
         }
         if (!ok) throw BleConnectException("enabling notifications failed")
         val ns = withTimeout(5_000) { notifyEnabled.await() }
@@ -116,24 +122,26 @@ class AndroidGattLink private constructor() : ScooterLink {
     override suspend fun write(chunk: ByteArray) = writeLock.withLock {
         val g = gate ?: throw BleConnectException("not connected")
         val c = writeChar ?: throw BleConnectException("not connected")
+        val writeType = if (profile.writeMode == WriteMode.WITH_RESPONSE)
+            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT else BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         repeat(10) {
             val done = CompletableDeferred<Int>()
             pendingWrite = done
             val started = if (Build.VERSION.SDK_INT >= 33) {
-                val r = g.writeCharacteristic(c, chunk, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
+                val r = g.writeCharacteristic(c, chunk, writeType)
                 if (r == android.bluetooth.BluetoothStatusCodes.ERROR_GATT_WRITE_REQUEST_BUSY) null
                 else r == android.bluetooth.BluetoothStatusCodes.SUCCESS // busy => retry
             } else {
                 @Suppress("DEPRECATION")
                 run {
-                    c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                    c.writeType = writeType
                     c.value = chunk
                     g.writeCharacteristic(c)
                 }
             }
             if (started == true) {
                 val st = withTimeoutOrNull(2_000) { done.await() }
-                if (st != null && st != BluetoothGatt.GATT_SUCCESS) throw BleConnectException("write status=$st")
+                if ((st == null && profile.writeMode == WriteMode.WITH_RESPONSE) || (st != null && st != BluetoothGatt.GATT_SUCCESS)) throw BleConnectException("write status=$st")
                 return@withLock
             }
             if (started == false && Build.VERSION.SDK_INT < 33) delay(50) else if (started == false) throw BleConnectException("write rejected")
@@ -152,10 +160,10 @@ class AndroidGattLink private constructor() : ScooterLink {
         private val CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
         /** Connects with a bounded number of retries (GATT 133 is common). Always closes failed attempts. */
-        suspend fun open(context: Context, device: BluetoothDevice, attempts: Int = 3): AndroidGattLink {
+        suspend fun open(context: Context, device: BluetoothDevice, profile: GattProfile, attempts: Int = 3): AndroidGattLink {
             var last: Throwable? = null
             repeat(attempts) {
-                val link = AndroidGattLink()
+                val link = AndroidGattLink(profile)
                 try {
                     link.connect(context.applicationContext, device)
                     return link

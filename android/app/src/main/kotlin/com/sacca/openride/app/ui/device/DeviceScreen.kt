@@ -133,7 +133,7 @@ fun DeviceScreen(vm: DeviceViewModel) {
             }
             exportError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Text("Advanced", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp))
-            OutlinedButton({ confirmPair = true }) { Text("Pair new password") }
+            OutlinedButton({ confirmPair = true }, enabled = st.pairingSupported) { Text("Pair new password") }
         }
         Spacer(Modifier.height(24.dp))
     }

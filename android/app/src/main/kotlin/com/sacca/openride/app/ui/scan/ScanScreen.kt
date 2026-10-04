@@ -39,6 +39,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sacca.openride.app.ble.BluetoothAccess
 import com.sacca.openride.app.ui.Messages
 import com.sacca.openride.app.ui.Spinner
+import com.sacca.openride.core.profile.DeviceProfiles
 
 @Composable
 fun ScanScreen(vm: ScanViewModel = hiltViewModel()) {
@@ -54,7 +55,7 @@ fun ScanScreen(vm: ScanViewModel = hiltViewModel()) {
     }
 
     Text(
-        "Unofficial open-source client for the Segway F2 Pro. Not affiliated with the manufacturer; use at your own risk. " +
+        "Unofficial open-source scooter client. Not affiliated with the manufacturer; use at your own risk. " +
             "The scooter accepts one app at a time, so close the official app first.",
         modifier = Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodySmall,
     )
@@ -72,6 +73,12 @@ fun ScanScreen(vm: ScanViewModel = hiltViewModel()) {
         return
     }
     LaunchedEffect(Unit) { vm.start() }
+    if (DeviceProfiles.all.size > 1) {
+        Text("Scooter model: ${st.profile.name}")
+        DeviceProfiles.all.forEach { profile ->
+            TextButton({ vm.chooseProfile(profile) }, enabled = profile.id != st.profile.id) { Text(profile.name) }
+        }
+    }
     Messages(st.error, null) {}
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (st.scanning) Spinner(Modifier.padding(end = 12.dp))

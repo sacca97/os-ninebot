@@ -1,0 +1,491 @@
+{
+  "id": "ninebot-f2-pro",
+  "name": "Ninebot F2 Pro",
+  "protocol": "ninebot",
+  "encryption": "ninebot-current",
+  "authentication": "ninebot-init-auth",
+  "pairing": "weak-mode",
+  "discovery": {
+    "manufacturer_id": "0x424E"
+  },
+  "gatt": {
+    "service": "6e400001-b5a3-f393-e0a9-e50e24dcca9e",
+    "write": "6e400002-b5a3-f393-e0a9-e50e24dcca9e",
+    "notify": "6e400003-b5a3-f393-e0a9-e50e24dcca9e",
+    "write_mode": "without_response",
+    "receive_mode": "notification",
+    "mtu": 247
+  },
+  "readings": [
+    {
+      "key": "serial",
+      "label": "Serial",
+      "device": "0x20",
+      "register": "0x10",
+      "bytes": 14,
+      "decode": {
+        "kind": "ascii"
+      },
+      "static": true,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "ctrl_fw",
+      "label": "Controller firmware",
+      "device": "0x20",
+      "register": "0x1A",
+      "bytes": 2,
+      "decode": {
+        "kind": "firmware"
+      },
+      "static": true,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "ble_fw",
+      "label": "Bluetooth firmware",
+      "device": "0x20",
+      "register": "0x68",
+      "bytes": 2,
+      "decode": {
+        "kind": "firmware"
+      },
+      "static": true,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "bms_fw",
+      "label": "Battery (BMS) firmware",
+      "device": "0x22",
+      "register": "0x17",
+      "bytes": 2,
+      "decode": {
+        "kind": "hex"
+      },
+      "static": true,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "batt_pct",
+      "label": "Battery",
+      "device": "0x22",
+      "register": "0x32",
+      "bytes": 2,
+      "decode": {
+        "kind": "number",
+        "unit": "%",
+        "precision": 0
+      },
+      "static": false,
+      "fast": true,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "batt_v",
+      "label": "Battery voltage",
+      "device": "0x22",
+      "register": "0x34",
+      "bytes": 2,
+      "decode": {
+        "kind": "number",
+        "scale": 0.01,
+        "unit": "V"
+      },
+      "static": false,
+      "fast": true,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "range",
+      "label": "Range",
+      "device": "0x20",
+      "register": "0x24",
+      "bytes": 2,
+      "decode": {
+        "kind": "number",
+        "scale": 0.01,
+        "unit": "km"
+      },
+      "static": false,
+      "fast": true,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "mileage",
+      "label": "Mileage",
+      "device": "0x20",
+      "register": "0x29",
+      "bytes": 4,
+      "decode": {
+        "kind": "number",
+        "scale": 0.001,
+        "unit": "km",
+        "precision": 1
+      },
+      "static": false,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "avg_speed",
+      "label": "Average speed",
+      "device": "0x20",
+      "register": "0x65",
+      "bytes": 2,
+      "decode": {
+        "kind": "number",
+        "scale": 0.1,
+        "unit": "km/h",
+        "precision": 1
+      },
+      "static": false,
+      "fast": true,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md",
+      "evidence": "Label from reference register map; zero at rest. Live versus trip-average semantics unverified."
+    },
+    {
+      "key": "mode",
+      "label": "Mode",
+      "device": "0x20",
+      "register": "0x75",
+      "bytes": 2,
+      "decode": {
+        "kind": "enum",
+        "values": {
+          "0": "NORMAL",
+          "1": "ECO",
+          "2": "SPORT"
+        }
+      },
+      "static": false,
+      "fast": true,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "error",
+      "label": "Error code",
+      "device": "0x20",
+      "register": "0x1B",
+      "bytes": 2,
+      "decode": {
+        "kind": "hex",
+        "prefix": "0x",
+        "width": 4
+      },
+      "static": false,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "alarm",
+      "label": "Alarm code",
+      "device": "0x20",
+      "register": "0x1C",
+      "bytes": 2,
+      "decode": {
+        "kind": "hex",
+        "prefix": "0x",
+        "width": 4
+      },
+      "static": false,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "status",
+      "label": "Status word",
+      "device": "0x20",
+      "register": "0x1D",
+      "bytes": 2,
+      "decode": {
+        "kind": "hex",
+        "prefix": "0x",
+        "width": 4
+      },
+      "static": false,
+      "fast": true,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "batt_a",
+      "label": "Battery current",
+      "device": "0x22",
+      "register": "0x33",
+      "bytes": 2,
+      "decode": {
+        "kind": "current",
+        "signed": true,
+        "scale": 0.01,
+        "unit": "A"
+      },
+      "static": false,
+      "fast": true,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "cell_mv",
+      "label": "Cell voltages",
+      "device": "0x22",
+      "register": "0x40",
+      "bytes": 20,
+      "decode": {
+        "kind": "cells",
+        "unit": "mV"
+      },
+      "static": false,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "cell_temp",
+      "label": "Cell temperatures",
+      "device": "0x22",
+      "register": "0x35",
+      "bytes": 2,
+      "decode": {
+        "kind": "temperatures",
+        "offset": -20,
+        "unit": "°C"
+      },
+      "static": false,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "batt_health",
+      "label": "Battery health",
+      "device": "0x22",
+      "register": "0x3B",
+      "bytes": 2,
+      "decode": {
+        "kind": "number",
+        "unit": "%",
+        "precision": 0
+      },
+      "static": false,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "temp",
+      "label": "Body temperature",
+      "device": "0x20",
+      "register": "0x3E",
+      "bytes": 2,
+      "decode": {
+        "kind": "number",
+        "signed": true,
+        "scale": 0.1,
+        "unit": "°C",
+        "precision": 1
+      },
+      "static": false,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "speed_26",
+      "label": "Register 0x26 (unknown; speed candidate)",
+      "device": "0x20",
+      "register": "0x26",
+      "bytes": 2,
+      "decode": {
+        "kind": "raw"
+      },
+      "static": false,
+      "fast": true,
+      "experimental": true,
+      "verification": "unverified",
+      "evidence": "docs/f2pro-findings.md: official app repeatedly polls controller 0x26; zero at rest. Meaning, scale and response while moving are unknown."
+    },
+    {
+      "key": "ctrl_v",
+      "label": "Controller voltage",
+      "device": "0x20",
+      "register": "0x47",
+      "bytes": 2,
+      "decode": {
+        "kind": "number",
+        "scale": 0.01,
+        "unit": "V"
+      },
+      "static": false,
+      "fast": false,
+      "experimental": true,
+      "verification": "unverified"
+    },
+    {
+      "key": "range_pred",
+      "label": "Predicted range",
+      "device": "0x20",
+      "register": "0x25",
+      "bytes": 2,
+      "decode": {
+        "kind": "number",
+        "scale": 0.01,
+        "unit": "km"
+      },
+      "static": false,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "walk_mode",
+      "label": "Walk mode (5 km/h)",
+      "device": "0x20",
+      "register": "0x77",
+      "bytes": 2,
+      "decode": {
+        "kind": "boolean",
+        "true": "on",
+        "false": "off"
+      },
+      "static": false,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "charging",
+      "label": "Charging",
+      "device": "0x20",
+      "register": "0x1D",
+      "bytes": 2,
+      "decode": {
+        "kind": "boolean",
+        "mask": 256,
+        "true": "yes",
+        "false": "no"
+      },
+      "static": false,
+      "fast": true,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "kers",
+      "label": "KERS",
+      "device": "0x20",
+      "register": "0x7B",
+      "bytes": 2,
+      "decode": {
+        "kind": "enum",
+        "values": {
+          "0": "weak",
+          "1": "medium",
+          "2": "strong"
+        }
+      },
+      "static": false,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "tcs",
+      "label": "Traction control (TCS)",
+      "device": "0x20",
+      "register": "0xF3",
+      "bytes": 2,
+      "decode": {
+        "kind": "boolean",
+        "true": "on",
+        "false": "off"
+      },
+      "static": false,
+      "fast": false,
+      "experimental": false,
+      "verification": "observed; see docs/android-plan.md"
+    },
+    {
+      "key": "cruise",
+      "label": "Cruise",
+      "device": "0x20",
+      "register": "0x7C",
+      "bytes": 2,
+      "decode": {
+        "kind": "raw",
+        "prefix": ""
+      },
+      "static": false,
+      "fast": false,
+      "experimental": true,
+      "verification": "unverified"
+    },
+    {
+      "key": "tail_light",
+      "label": "Tail light",
+      "device": "0x20",
+      "register": "0x7D",
+      "bytes": 2,
+      "decode": {
+        "kind": "raw",
+        "prefix": ""
+      },
+      "static": false,
+      "fast": false,
+      "experimental": true,
+      "verification": "unverified"
+    }
+  ],
+  "power": {
+    "state": {
+      "device": "0x21",
+      "register": "0x4D",
+      "bytes": 2,
+      "on_value": 1
+    },
+    "notification": {
+      "command": "0x21",
+      "marker": 2
+    },
+    "on": {
+      "source": "0x3E",
+      "device": "0x21",
+      "command": "0x03",
+      "register": "0x1E",
+      "data": [
+        1,
+        0
+      ]
+    },
+    "off": {
+      "source": "0x3E",
+      "device": "0x20",
+      "command": "0x03",
+      "register": "0x79",
+      "data": [
+        1,
+        0
+      ]
+    },
+    "zero_checks": [
+      "avg_speed",
+      "speed_26"
+    ],
+    "verification": "verified-stationary; interlock-unverified-moving"
+  }
+}

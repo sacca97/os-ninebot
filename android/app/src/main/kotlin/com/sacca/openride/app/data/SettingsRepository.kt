@@ -8,6 +8,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import com.sacca.openride.core.profile.DeviceProfile
+import com.sacca.openride.core.profile.DeviceProfiles
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,7 +20,7 @@ data class AppSettings(
 )
 
 @Singleton
-class SettingsRepository @Inject constructor(@ApplicationContext private val context: Context) {
+class SettingsRepository @Inject constructor(@param:ApplicationContext private val context: Context) {
     private val powerKey = booleanPreferencesKey("power_control")
     private val experimentalKey = booleanPreferencesKey("show_experimental")
 
@@ -32,8 +34,13 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     private val lastKey = stringPreferencesKey("last_scooter")
     suspend fun lastScooter(): Pair<String, String>? =
         context.dataStore.data.first()[lastKey]?.split("|", limit = 2)?.takeIf { it.size == 2 }?.let { it[0] to it[1] }
-    suspend fun setLastScooter(address: String, name: String) { context.dataStore.edit { it[lastKey] = "$address|$name" } }
-    suspend fun clearLastScooter() { context.dataStore.edit { it.remove(lastKey) } }
+    private val lastProfileKey = stringPreferencesKey("last_scooter_profile")
+    suspend fun lastProfile(): DeviceProfile =
+        DeviceProfiles.byId(context.dataStore.data.first()[lastProfileKey] ?: DeviceProfiles.default.id)
+    suspend fun setLastScooter(address: String, name: String, profile: DeviceProfile) {
+        context.dataStore.edit { it[lastKey] = "$address|$name"; it[lastProfileKey] = profile.id }
+    }
+    suspend fun clearLastScooter() { context.dataStore.edit { it.remove(lastKey); it.remove(lastProfileKey) } }
     suspend fun setPowerControl(v: Boolean) { context.dataStore.edit { it[powerKey] = v } }
     suspend fun setShowExperimental(v: Boolean) { context.dataStore.edit { it[experimentalKey] = v } }
 }

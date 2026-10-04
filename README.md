@@ -115,3 +115,8 @@ describes.
 
 The register map in `f2probe/registers.py` is ported from ownbee/ninebot-ble (MIT,
 https://github.com/ownbee/ninebot-ble, commit 1850351f5bce9627f612fd1141489ed7a575be61); it is not vendored here.
+
+## Contributing scooter support
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the capture/research workflow, device profiles,
+protocol coverage, synthetic tests, and what to include in a new-model pull request.

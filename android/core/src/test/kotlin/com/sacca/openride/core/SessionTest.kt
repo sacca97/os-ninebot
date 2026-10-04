@@ -11,6 +11,8 @@ import com.sacca.openride.core.protocol.Cmd
 import com.sacca.openride.core.protocol.Dev
 import com.sacca.openride.core.protocol.FrameReassembler
 import com.sacca.openride.core.protocol.Packet
+import com.sacca.openride.core.registers.Reg
+import com.sacca.openride.core.profile.DeviceProfiles
 import com.sacca.openride.core.registers.Registers
 import com.sacca.openride.core.safety.FrameGuard
 import com.sacca.openride.core.session.CredentialRejected
@@ -115,6 +117,20 @@ class SessionTest {
             assertTrue(s.powerState())
             assertEquals("66 %", s.read(Registers.all.first { it.key == "batt_pct" }))
         }
+    }
+
+    @Test fun sessionReadsTheSelectedModelsRegisterMapping() = runBlocking {
+        val original = DeviceProfiles.default.reading("batt_pct")
+        val mapped = Reg(original.key, original.label, Dev.CONTROLLER, 0x65, 1, decode = original.decode)
+        val profile = DeviceProfiles.default.copy(id = "synthetic-model", readings = listOf(mapped), power = null)
+        val link = FakeScooterLink("NBFAKE0000001A", pw, speed = 55)
+        val session = ScooterSession(link, "NBFAKE0000001A", profile = profile)
+        session.start(CoroutineScope(Dispatchers.Default))
+        try {
+            session.init(); session.login(pw)
+            assertEquals("55 %", session.read(session.profile.reading("batt_pct")))
+            assertTrue(link.sent.any { it.cmd == Cmd.READ && it.dst == Dev.CONTROLLER && it.idx == 0x65 })
+        } finally { session.close() }
     }
 
     @Test fun wrongCredentialIsRejected() {

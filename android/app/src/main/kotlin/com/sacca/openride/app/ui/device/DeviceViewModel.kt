@@ -20,7 +20,6 @@ import com.sacca.openride.app.ui.nav.Navigator
 import com.sacca.openride.app.ui.nav.Screen
 import com.sacca.openride.core.session.CredentialRejected
 import com.sacca.openride.core.session.InitInfo
-import com.sacca.openride.core.session.WeakModePairing
 import java.security.SecureRandom
 import javax.inject.Inject
 
@@ -32,6 +31,7 @@ data class DeviceUiState(
     val error: String? = null,
     val notice: String? = null,
     val pairingPending: Boolean = false,
+    val pairingSupported: Boolean = false,
 )
 
 @HiltViewModel
@@ -48,7 +48,8 @@ class DeviceViewModel @Inject constructor(
     /** INIT only: serial + "password stored", nothing else is sent. */
     fun probe() {
         if (job?.isActive == true) return
-        _ui.update { DeviceUiState(name = connector.selected.value?.name.orEmpty(), busy = "Connecting…") }
+        _ui.update { DeviceUiState(name = connector.selected.value?.name.orEmpty(), busy = "Connecting…",
+            pairingSupported = connector.selected.value?.profile?.pairing != null) }
         job = viewModelScope.launch {
             var conn: com.sacca.openride.app.data.Connection? = null
             try {
@@ -138,6 +139,7 @@ class DeviceViewModel @Inject constructor(
 
     /** Replaces the scooter's password (the flow verified live with `f2 pair`). */
     fun pair() {
+        if (connector.selected.value?.profile?.pairing == null) return
         val serial = _ui.value.info?.serial ?: return
         job?.cancel()
         job = viewModelScope.launch {
@@ -147,7 +149,7 @@ class DeviceViewModel @Inject constructor(
                 val pw = ByteArray(16).also { SecureRandom().nextBytes(it) }
                 store.savePending(serial, pw) // persisted BEFORE SET_PWD goes out
                 conn = connector.connect(this, pairing = true)
-                val ok = WeakModePairing.pair(conn.session, pw) {
+                val ok = requireNotNull(conn.session.profile.pairing) { "Pairing unsupported for this model" }.strategy.pair(conn.session, pw) {
                     _ui.update { it.copy(pairingPending = true, busy = "Press the scooter's power button…") }
                 }
                 _ui.update { it.copy(pairingPending = false) }

@@ -404,3 +404,11 @@ look like a lock-out if hammered: keep to one attempt per connection and add a v
   (connect, INIT, AUTH), and only on success is it promoted and the app opens the home screen. A rejection discards it, keeps any
   existing credential untouched and starts the normal 30 s login cool-down; a connection failure also discards it and says why.
   Not possible during the cool-down. ❓ not tried against the scooter yet (the code path is the same one `pair` and the dashboard use).
+
+## Device profiles (status)
+
+- GATT, discovery, protocol selection, register mappings/decoders, polling priority and power mappings now come from `android/profiles/*.json`, validated and generated into typed Kotlin during the build. No runtime configuration parser is shipped.
+- Only the existing Ninebot crypto/INIT-AUTH implementation and weak-mode pairing are supported. Additional model profiles do not imply additional crypto support.
+- Model selection and saved-profile reconnects are implemented. ❓ Profile refactor not yet verified on hardware; core tests, debug build and lint cover the software changes.
+- Controller 0x26 stays an experimental raw unknown value. The only evidence for a speed hypothesis is official-app polling and zero at rest; meaning, scale and behavior while moving remain ❓. The existing zero checks on 0x65 and 0x26 are preserved.
+- See `CONTRIBUTING.md` for the new-model contribution workflow. Real captures remain private; contributions use findings and synthetic fixtures.
