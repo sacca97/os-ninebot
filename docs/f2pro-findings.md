@@ -108,3 +108,10 @@ Unverified unless noted: each item is inferred from a single snapshot. Serial-li
 - BMS 0x30 low byte also follows it (0x01 unplugged, 0x43 charging); meaning of the other bits unknown. ctrl 0x5D went 0 -> 0xFFFF once
   (unknown, single observation).
 - Not charge related: BMS 0x29 (flipped between 0 and 1 independently of the charger).
+
+## Pairing from Python, and single slot
+- `f2 pair --force` first crashed on the first unanswered SET_PWD (fixed: it now retries every 2 s like the Android app). The second run paired
+  after the button press, and the phone's official app then asked to be paired again: **the scooter keeps one password** (observed).
+- Register 0x0D-0x14 on the BLE board returns the stored password to a logged-in reader (seen in a sweep): do not dump or share it.
+- Read lengths: 20 bytes in one request works (cells at BMS 0x40; 14, 4 and 8 bytes also). Lengths above 20 and request pipelining were tried
+  while the scooter turned out to be OFF (no reply from ctrl/BMS then), so those two results are inconclusive.

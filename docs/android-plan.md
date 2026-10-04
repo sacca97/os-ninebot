@@ -335,3 +335,19 @@ look like a lock-out if hammered: keep to one attempt per connection and add a v
 | `f2probe/transport.py` (`Client`, `assert_safe`, `POWER_*`) | `core/session/ScooterSession`, `core/safety/FrameGuard` |
 | `f2probe/cli.py` (`status`, `power`, `pair`) | ViewModels / use-cases |
 | `tests/test_offline.py` | `core/src/test` (+ vectors) |
+
+
+## Power-off interlock and latency work (status)
+- **Interlock** ✅ unit-tested with a fake scooter, ❓ not tried on a moving scooter. `ScooterSession.setPower(false)` reads ctrl 0x65
+  ("average speed") and ctrl 0x26 (polled by the official app, 0 at rest, suspected live speed) and only sends the write if both read 0.
+  A non-zero value or an unreadable register throws `PowerRefused` and nothing is sent (fail closed). Power ON is not interlocked.
+  The confirmation dialog was removed. Open question: if 0x65 is a trip average it may stay non-zero after a ride and block power-off;
+  the Experimental list shows both registers so they can be watched while riding.
+- **Reads:** a register of N words is now ONE request of 2N bytes (cells 20 bytes: 73 ms against 958 ms for ten reads, live from Python;
+  also 14, 4 and 8 byte reads checked live). Never more than 20 bytes. Strictly one request in flight: a pipelining experiment on the
+  scooter lost replies, but the scooter state was not checked during that run, so it is untested and not used.
+- **Link:** connection priority HIGH, MTU wait capped at 1.5 s.
+- **Flow:** the last scooter (address + name) is remembered; at launch the app goes straight to the dashboard (no scan, no probe
+  connection) when a credential is stored; a scan result with a stored credential also skips the probe screen ("Credential" button
+  on each card opens the old screen). The credential decrypts while GATT connects.
+- **Polling:** one cycle = power + FAST registers (battery, current, status, speed, mode, range); the rest every 5th cycle; static values last.

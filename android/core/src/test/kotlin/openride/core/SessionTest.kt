@@ -14,6 +14,7 @@ import openride.core.protocol.Packet
 import openride.core.registers.Registers
 import openride.core.safety.FrameGuard
 import openride.core.session.CredentialRejected
+import openride.core.session.PowerRefused
 import openride.core.session.PowerResult
 import openride.core.session.ScooterLink
 import openride.core.session.ScooterSession
@@ -28,6 +29,10 @@ class FakeScooterLink(
     private val name: String,
     private val password: ByteArray,
     var powered: Boolean = true,
+    /** Raw value of the "average speed" register (ctrl 0x65). */
+    var speed: Int = 0,
+    /** When set the scooter never answers the speed registers. */
+    var speedSilent: Boolean = false,
 ) : ScooterLink {
     private val out = Channel<ByteArray>(Channel.UNLIMITED)
     override val incoming: Flow<ByteArray> = out.receiveAsFlow()
@@ -67,6 +72,13 @@ class FakeScooterLink(
                 reply(Packet(Dev.BLE, Dev.PHONE, Cmd.READ_ACK, p.idx, byteArrayOf(if (powered) 1 else 0, 0)), c + 1)
             p.cmd == Cmd.READ && p.dst == Dev.BATTERY && p.idx == 0x32 ->
                 reply(Packet(Dev.BATTERY, Dev.PHONE, Cmd.READ_ACK, p.idx, byteArrayOf(66, 0)), c + 1)
+            p.cmd == Cmd.READ && p.dst == Dev.CONTROLLER && (p.idx == 0x65 || p.idx == 0x26) ->
+                if (!speedSilent) {
+                    val v = if (p.idx == 0x65) speed else 0
+                    reply(Packet(Dev.CONTROLLER, Dev.PHONE, Cmd.READ_ACK, p.idx, byteArrayOf(v.toByte(), (v shr 8).toByte())), c + 1)
+                }
+            p.cmd == Cmd.READ && p.dst == Dev.BATTERY && p.idx == 0x40 && p.data[0].toInt() == 20 ->
+                reply(Packet(Dev.BATTERY, Dev.PHONE, Cmd.READ_ACK, p.idx, ByteArray(20) { if (it % 2 == 0) 0x52 else 0x0F }), c + 1)
             p == FrameGuard.POWER_OFF -> powered = false
             p == FrameGuard.POWER_ON -> powered = true
         }
@@ -122,4 +134,54 @@ class SessionTest {
         assertFalse(link.powered)
     }
 
+    @Test fun powerOffRefusedWhileSpeedNonZero() {
+        val link = FakeScooterLink("NBFAKE0000001A", pw, powered = true, speed = 55) // 5.5 km/h
+        run(link, power = true) { s ->
+            s.init(); s.login(pw)
+            try { s.setPower(false); fail("should refuse") } catch (e: PowerRefused) {
+                assertTrue(e.message!!.contains("5.5 km/h"))
+            }
+        }
+        assertTrue(link.sent.none { it.cmd == Cmd.WRITE_NO_REPLY })
+        assertTrue(link.powered)
+    }
+
+    @Test fun powerOffRefusedWhenSpeedCannotBeRead() {
+        val link = FakeScooterLink("NBFAKE0000001A", pw, powered = true, speedSilent = true)
+        run(link, power = true) { s ->
+            s.init(); s.login(pw)
+            try { s.setPower(false); fail("should refuse") } catch (_: PowerRefused) {}
+        }
+        assertTrue(link.sent.none { it.cmd == Cmd.WRITE_NO_REPLY })
+    }
+
+    @Test fun powerOffProceedsWhenSpeedIsZeroAndChecksSpeedFirst() {
+        val link = FakeScooterLink("NBFAKE0000001A", pw, powered = true, speed = 0)
+        run(link, power = true) { s ->
+            s.init(); s.login(pw)
+            assertEquals(PowerResult.CHANGED, s.setPower(false))
+        }
+        val order = link.sent.filter { it.cmd == Cmd.READ && it.dst == Dev.CONTROLLER || it.cmd == Cmd.WRITE_NO_REPLY }
+        assertEquals(listOf(0x65, 0x26, 0x79), order.map { it.idx })
+        assertFalse(link.powered)
+    }
+
+    @Test fun powerOnIsNotInterlocked() {
+        val link = FakeScooterLink("NBFAKE0000001A", pw, powered = false, speed = 99)
+        run(link, power = true) { s ->
+            s.init(); s.login(pw)
+            assertEquals(PowerResult.CHANGED, s.setPower(true))
+        }
+        assertTrue(link.sent.none { it.cmd == Cmd.READ && it.dst == Dev.CONTROLLER })
+    }
+
+    @Test fun cellVoltagesAreOneRequest() {
+        val link = FakeScooterLink("NBFAKE0000001A", pw)
+        run(link) { s ->
+            s.init(); s.login(pw)
+            val out = s.read(Registers.all.first { it.key == "cell_mv" })
+            assertTrue(out.startsWith("3922 3922"))
+        }
+        assertEquals(1, link.sent.count { it.cmd == Cmd.READ && it.dst == Dev.BATTERY && it.idx == 0x40 })
+    }
 }

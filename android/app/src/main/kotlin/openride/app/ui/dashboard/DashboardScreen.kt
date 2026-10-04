@@ -37,8 +37,6 @@ import openride.core.registers.Registers
 fun DashboardScreen(vm: DashboardViewModel, settingsVm: SettingsViewModel = hiltViewModel()) {
     val st by vm.ui.collectAsStateWithLifecycle()
     val settings by settingsVm.settings.collectAsStateWithLifecycle()
-    var confirmOff by remember { mutableStateOf(false) }
-
     LaunchedEffect(Unit) { vm.start() }
 
     Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -73,23 +71,19 @@ fun DashboardScreen(vm: DashboardViewModel, settingsVm: SettingsViewModel = hilt
             }
             if (settings.powerControl && st.power != null) {
                 Text("Power", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
-                Text("Powering on over Bluetooth leaves the scooter ready to ride.", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Powering on leaves the scooter ready to ride. Powering off first reads the speed registers and only goes ahead if they read zero.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                     Button({ vm.setPower(true) }, enabled = !st.powerBusy && st.power == false) { Text("Power on") }
-                    OutlinedButton({ confirmOff = true }, enabled = !st.powerBusy && st.power == true) { Text("Power off") }
+                    OutlinedButton({ vm.setPower(false) }, enabled = !st.powerBusy && st.power == true) { Text("Power off") }
                     if (st.powerBusy) CircularProgressIndicator(Modifier.height(24.dp))
                 }
             }
         }
         Spacer(Modifier.height(24.dp))
     }
-    if (confirmOff) AlertDialog(
-        onDismissRequest = { confirmOff = false },
-        title = { Text("Power off?") },
-        text = { Text("Only power off while the scooter is stopped. The speed is not checked by this app.") },
-        confirmButton = { TextButton({ confirmOff = false; vm.setPower(false) }) { Text("Power off") } },
-        dismissButton = { TextButton({ confirmOff = false }) { Text("Cancel") } },
-    )
 }
 
 @Composable

@@ -48,6 +48,19 @@ object Registers {
     internal fun cellTemps(b: ByteArray): String =
         b.take(2).joinToString(", ") { "${(it.toInt() and 0xFF) - 20} °C" }
 
+    /** A register consulted by the power-off interlock. */
+    class SpeedGuard(val dev: Int, val idx: Int, val label: String, val show: (Long) -> String)
+
+    /**
+     * All must read 0 before powering off. 0x65 is the "average speed" the interlock was asked to use; whether it is
+     * the live speed or a trip average is not established (it read 0.0 at rest), so 0x26 (polled by the official app,
+     * 0 at rest, suspected live speed) is checked too. UNVERIFIED while riding: watch both in the Experimental list.
+     */
+    val SPEED_GUARD = listOf(
+        SpeedGuard(Dev.CONTROLLER, 0x65, "Average speed") { fixed(it / 10.0, 1, "km/h") },
+        SpeedGuard(Dev.CONTROLLER, 0x26, "Speed register 0x26") { "raw $it" },
+    )
+
     fun powerOn(raw: ByteArray): Boolean = u(raw) == 1L
 
     val SERIAL = Reg("serial", "Serial", Dev.CONTROLLER, 0x10, 7, static = true) {
@@ -78,6 +91,7 @@ object Registers {
         Reg("batt_health", "Battery health", Dev.BATTERY, 0x3B, 1) { "${u(it)} %" },
         Reg("temp", "Body temperature", Dev.CONTROLLER, 0x3E, 1) { fixed(s16(it) / 10.0, 1, "°C") },
         // Still unverified (or meaning unknown): shown only in the Experimental section.
+        Reg("speed_26", "Register 0x26 (suspected speed)", Dev.CONTROLLER, 0x26, 1, experimental = true) { "raw ${u(it)}" },
         Reg("ctrl_v", "Controller voltage", Dev.CONTROLLER, 0x47, 1, experimental = true) { fixed(u(it) / 100.0, 2, "V") },
         Reg("range_pred", "Predicted range", Dev.CONTROLLER, 0x25, 1) { fixed(u(it) / 100.0, 2, "km") },
         Reg("walk_mode", "Walk mode (5 km/h)", Dev.CONTROLLER, 0x77, 1) { if (u(it) != 0L) "on" else "off" },

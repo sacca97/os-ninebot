@@ -23,6 +23,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -87,9 +88,12 @@ fun ScanScreen(vm: ScanViewModel = hiltViewModel()) {
     LazyColumn(Modifier.padding(top = 8.dp)) {
         items(st.scans, key = { it.address }) { ad ->
             Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { vm.select(ad) }) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(ad.name, style = MaterialTheme.typography.titleMedium)
-                    Text("${ad.address}  ·  ${ad.rssi} dBm", style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(ad.name, style = MaterialTheme.typography.titleMedium)
+                        Text("${ad.address}  ·  ${ad.rssi} dBm", style = MaterialTheme.typography.bodySmall)
+                    }
+                    TextButton({ vm.setup(ad) }) { Text("Credential") }
                 }
             }
         }

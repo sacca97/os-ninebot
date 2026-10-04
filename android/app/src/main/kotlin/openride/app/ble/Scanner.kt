@@ -22,6 +22,10 @@ class ScooterAd(val name: String, val device: BluetoothDevice, val rssi: Int) {
 object Scanner {
     fun adapter(context: Context) = context.getSystemService(BluetoothManager::class.java)?.adapter
 
+    /** A scooter we already know (address + name from an earlier scan): no scan needed to connect. */
+    fun known(context: Context, address: String, name: String): ScooterAd? =
+        try { adapter(context)?.getRemoteDevice(address)?.let { ScooterAd(name, it, 0) } } catch (_: IllegalArgumentException) { null }
+
     fun scan(context: Context): Flow<ScooterAd> = callbackFlow {
         val scanner = adapter(context)?.bluetoothLeScanner
         if (scanner == null) {

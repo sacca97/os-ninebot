@@ -26,6 +26,9 @@ class LinkClosedException(cause: Throwable? = null) : RuntimeException("Bluetoot
 class ScooterTimeout(what: String) : RuntimeException("No reply: $what")
 class CredentialRejected : RuntimeException("Scooter did not accept the credential")
 
+/** The power-off interlock said no (scooter not known to be standing still). Nothing was sent. */
+class PowerRefused(message: String) : RuntimeException(message)
+
 class InitInfo(val serial: String, val passwordStored: Boolean)
 
 enum class PowerResult { ALREADY_IN_STATE, CHANGED, NO_CHANGE }
@@ -140,12 +143,17 @@ class ScooterSession(
 
     // -- reads ----------------------------------------------------------
 
-    /** Reads are idempotent: at most [retries] retries on timeout. */
-    suspend fun readRaw(dev: Int, idx: Int, retries: Int = 2, timeoutMs: Long = 3000): ByteArray {
+    /**
+     * Reads [length] bytes starting at register [idx] in ONE request (the official app does the same, e.g. 20 bytes
+     * for the ten cell voltages: 73 ms against 958 ms for ten 2-byte reads, measured live). Reads are idempotent:
+     * at most [retries] retries on timeout. Strictly one request in flight (see [request]).
+     */
+    suspend fun readRaw(dev: Int, idx: Int, retries: Int = 2, timeoutMs: Long = 3000, length: Int = 2): ByteArray {
+        require(length in 1..MAX_READ_BYTES) { "read length must be 1..$MAX_READ_BYTES" }
         var attempt = 0
         while (true) {
             try {
-                val r = request(Packet(Dev.PHONE, dev, Cmd.READ, idx, byteArrayOf(2)), "READ %02X:%02X".format(dev, idx), timeoutMs) {
+                val r = request(Packet(Dev.PHONE, dev, Cmd.READ, idx, byteArrayOf(length.toByte())), "READ %02X:%02X".format(dev, idx), timeoutMs) {
                     it.src == dev && it.cmd == Cmd.READ_ACK && it.idx == idx
                 }
                 return r.data
@@ -155,11 +163,8 @@ class ScooterSession(
         }
     }
 
-    suspend fun read(reg: Reg, retries: Int = 2): String {
-        val bytes = ArrayList<Byte>()
-        for (i in 0 until reg.words) bytes += readRaw(reg.dev, reg.idx + i, retries).toList()
-        return reg.decode(bytes.toByteArray())
-    }
+    suspend fun read(reg: Reg, retries: Int = 2): String =
+        reg.decode(readRaw(reg.dev, reg.idx, retries, length = reg.words * 2))
 
     suspend fun powerState(retries: Int = 2, timeoutMs: Long = 3000): Boolean =
         Registers.powerOn(readRaw(Registers.POWER_STATE_DEV, Registers.POWER_STATE_IDX, retries, timeoutMs))
@@ -167,11 +172,16 @@ class ScooterSession(
     // -- power ----------------------------------------------------------
 
     /**
+     * Powering OFF is interlocked: the speed registers ([Registers.SPEED_GUARD]) are read first and the write only
+     * goes out if every one reads zero. A non-zero value, or a register that cannot be read, throws [PowerRefused]
+     * and sends nothing (fail closed).
+     *
      * Never retries the write. If already in the requested state, sends nothing. Polls the power register for up
      * to [waitMs] and reports [PowerResult.NO_CHANGE] if it did not flip (does not resend).
      */
     suspend fun setPower(on: Boolean, waitMs: Long = 15_000): PowerResult {
         if (powerState() == on) return PowerResult.ALREADY_IN_STATE
+        if (!on) requireStandingStill()
         gate.withLock { send(if (on) FrameGuard.POWER_ON else FrameGuard.POWER_OFF) }
         val deadline = System.currentTimeMillis() + waitMs
         while (System.currentTimeMillis() < deadline) {
@@ -180,6 +190,18 @@ class ScooterSession(
             if (now == on) return PowerResult.CHANGED
         }
         return PowerResult.NO_CHANGE
+    }
+
+    private suspend fun requireStandingStill() {
+        for (g in Registers.SPEED_GUARD) {
+            val raw = try {
+                readRaw(g.dev, g.idx, retries = 1, timeoutMs = 1500)
+            } catch (_: ScooterTimeout) {
+                throw PowerRefused("Could not read ${g.label}, so it is not known whether the scooter is standing still. Not powering off.")
+            }
+            val v = raw.indices.fold(0L) { acc, i -> acc or ((raw[i].toLong() and 0xFF) shl (8 * i)) }
+            if (v != 0L) throw PowerRefused("${g.label} reads ${g.show(v)}, not zero. Not powering off.")
+        }
     }
 
     // -- pairing (experimental) ------------------------------------------
@@ -210,5 +232,8 @@ class ScooterSession(
 
     companion object {
         const val NOTIFY_CMD = 0x21
+
+        /** The longest single read the official app is seen to use (ten cell voltages). */
+        const val MAX_READ_BYTES = 20
     }
 }

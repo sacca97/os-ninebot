@@ -88,8 +88,11 @@ class AndroidGattLink private constructor() : ScooterLink {
             ?: throw BleConnectException("connectGatt returned null")
         gate = g
         withTimeout(15_000) { connected.await() }
+        // Shortest connection interval: every request/response costs at least one interval each way.
+        g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+        // A bigger MTU lets each frame go out as a single write (one callback instead of one per 20 bytes).
         if (!g.requestMtu(247)) mtuDone.complete(Unit)
-        withTimeoutOrNull(5_000) { mtuDone.await() }
+        withTimeoutOrNull(1_500) { mtuDone.await() }
         // Wait for onServicesDiscovered before anything else.
         if (!g.discoverServices()) throw BleConnectException("discoverServices failed")
         val st = withTimeout(10_000) { servicesDone.await() }
