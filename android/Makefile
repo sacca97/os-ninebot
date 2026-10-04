@@ -11,13 +11,19 @@ endif
 
 GRADLE := ./gradlew
 ADB    := $(ANDROID_HOME)/platform-tools/adb $(if $(SERIAL),-s $(SERIAL))
-PKG    := com.sacca.openride
+# Debug and release are separate apps on the phone: debug is com.sacca.openride.debug ("OpenRide Debug"), release is
+# com.sacca.openride. start/stop/logs/uninstall act on the debug app, or on the release one with VARIANT=release
+# (the *-release targets set it for you).
+VARIANT ?= debug
+PKG    := com.sacca.openride$(if $(filter release,$(VARIANT)),,.debug)
 APK    := app/build/outputs/apk/debug/app-debug.apk
+APK_RELEASE := app/build/outputs/apk/release/app-release.apk
 
-.PHONY: help build test lint check install run start stop logs uninstall devices clean
+.PHONY: help build test lint check install run start stop logs uninstall devices clean \
+        keystore release install-release run-release uninstall-release
 
 help:  ## list targets
-	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
 
 build:  ## assemble the debug APK
 	$(GRADLE) :app:assembleDebug
@@ -49,6 +55,29 @@ uninstall:  ## remove the app (also wipes its stored data)
 
 devices:  ## list adb devices
 	$(ADB) devices
+
+keystore:  ## create the local release signing key (android/release.jks + keystore.properties, both git-ignored)
+	@test ! -e keystore.properties || { echo "keystore.properties already exists; not overwriting it."; exit 1; }
+	@PW=$$(openssl rand -hex 16); \
+	 $(JAVA_HOME)/bin/keytool -genkeypair -keystore release.jks -alias openride -keyalg RSA -keysize 4096 -validity 10000 \
+	   -storepass $$PW -keypass $$PW -dname "CN=OpenRide, O=local" && \
+	 printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=openride\nkeyPassword=%s\n' $$PW $$PW > keystore.properties && \
+	 chmod 600 keystore.properties release.jks && \
+	 echo "Created release.jks and keystore.properties. BACK THEM UP: updates to an installed release app must be signed with this same key."
+
+release:  ## build the signed, minified release APK (needs `make keystore` once)
+	@test -f keystore.properties || { echo "No signing key yet: run 'make keystore' once."; exit 1; }
+	$(GRADLE) :app:assembleRelease
+	@echo "-> $(APK_RELEASE)"
+
+install-release: release  ## build and install the release app (next to the debug one)
+	$(ADB) install -r $(APK_RELEASE) || { echo "If this says INSTALL_FAILED_UPDATE_INCOMPATIBLE, a copy signed with a different key is installed: make uninstall-release (wipes its data) and retry."; exit 1; }
+
+run-release: VARIANT = release
+run-release: install-release start  ## install the release app, then launch it
+
+uninstall-release: VARIANT = release
+uninstall-release: uninstall  ## remove the release app (also wipes its stored data)
 
 clean:  ## gradle clean
 	$(GRADLE) clean

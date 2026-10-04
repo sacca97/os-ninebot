@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -16,11 +18,33 @@ android {
         versionCode = 1
         versionName = "0.1"
     }
+    // Release signing comes from android/keystore.properties (created by `make keystore`, git-ignored). Without it the
+    // release APK is unsigned and cannot be installed.
+    val keystoreProps = Properties().apply {
+        rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+    }
+    signingConfigs {
+        if (keystoreProps.isNotEmpty()) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
+        // Debug installs next to release (own id, own data, own label); release is the real app id.
+        debug {
+            applicationIdSuffix = ".debug"
+            resValue("string", "app_name", "OpenRide Debug")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            resValue("string", "app_name", "OpenRide")
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     compileOptions {
