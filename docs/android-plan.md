@@ -347,7 +347,7 @@ look like a lock-out if hammered: keep to one attempt per connection and add a v
   also 14, 4 and 8 byte reads checked live). Never more than 20 bytes. Strictly one request in flight: a pipelining experiment on the
   scooter lost replies, but the scooter state was not checked during that run, so it is untested and not used.
 - **Link:** connection priority HIGH, MTU wait capped at 1.5 s.
-- **Flow:** the last scooter (address + name) is remembered; at launch the app goes straight to the dashboard (no scan, no probe
+- **Flow:** the last scooter's name is remembered; at launch the app goes straight to the dashboard (a short scan for that name, no probe
   connection) when a credential is stored; a scan result with a stored credential also skips the probe screen ("Credential" button
   on each card opens the old screen). The credential decrypts while GATT connects.
 - **Polling:** one cycle per second (power + FAST registers: battery, current, status, speed, mode, range); the rest every 5th cycle; static values last.
@@ -376,7 +376,10 @@ look like a lock-out if hammered: keep to one attempt per connection and add a v
   connection blocks the official app and costs battery, and nothing needs polling unattended).
 
 ## Navigation (status)
-- The home screen is the root. It connects to the scooter saved last (address + name remembered, credential stored): no scan, no probe.
+- The home screen is the root. It connects to the scooter saved last (name remembered, credential stored) after a short scan for that name
+  (under a second in range), no probe connection. A connection opened from a saved ADDRESS does not work: the scooter uses a random
+  address type, which `getRemoteDevice(address)` loses (logcat showed `addr_type=public`, and the connect hung), so the device object must
+  come from a scan; it is then reused in-process for reconnects.
   With nothing saved, or the credential forgotten, it shows "No scooter paired" and an "Add scooter" button. Verified on an emulator.
 - Scanning lives on a secondary "Add scooter" page (also under More). Picking a scooter that already has a credential collapses the stack
   to the home screen; otherwise the credential screen opens first and "Log in and open dashboard" also collapses to home. Back from home

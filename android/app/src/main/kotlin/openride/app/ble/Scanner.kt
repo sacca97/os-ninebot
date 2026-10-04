@@ -11,6 +11,8 @@ import android.content.Context
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import openride.core.protocol.Ble
 
 /** [name] comes from the scan record: it is key material, so never from BluetoothDevice.name. */
@@ -22,9 +24,13 @@ class ScooterAd(val name: String, val device: BluetoothDevice, val rssi: Int) {
 object Scanner {
     fun adapter(context: Context) = context.getSystemService(BluetoothManager::class.java)?.adapter
 
-    /** A scooter we already know (address + name from an earlier scan): no scan needed to connect. */
-    fun known(context: Context, address: String, name: String): ScooterAd? =
-        try { adapter(context)?.getRemoteDevice(address)?.let { ScooterAd(name, it, 0) } } catch (_: IllegalArgumentException) { null }
+    /**
+     * Scans until the scooter with this advertised name shows up (typically well under a second when it is in range), or null.
+     * Connecting needs a device object that came from a scan: it carries the address TYPE (the scooter uses a random address),
+     * which `getRemoteDevice(address)` loses, so a connection opened from a saved address string just hangs.
+     */
+    suspend fun find(context: Context, name: String, timeoutMs: Long = 8_000): ScooterAd? =
+        withTimeoutOrNull(timeoutMs) { scan(context).first { it.name == name } }
 
     fun scan(context: Context): Flow<ScooterAd> = callbackFlow {
         val scanner = adapter(context)?.bluetoothLeScanner

@@ -125,20 +125,31 @@ class DashboardViewModel @Inject constructor(
         connJob = viewModelScope.launch {
             val me = currentCoroutineContext()[Job]
             try {
-                val ad = connector.selected.value
-                    ?: settings.lastScooter()?.let { (address, name) -> Scanner.known(context, address, name) }?.also { connector.select(it) }
-                // The advertised name is the serial, so the credential (Keystore decrypt) loads while GATT connects.
-                val early = ad?.let { async { store.loginCredential(it.name) } }
-                if (ad == null || early?.await() == null) {
+                var ad = connector.selected.value
+                val savedName = if (ad == null) settings.lastScooter()?.second else null
+                val credName = ad?.name ?: savedName
+                // The advertised name is the serial, so the credential (Keystore decrypt) loads while we look for / connect to it.
+                val early = credName?.let { async { store.loginCredential(it) } }
+                if (early?.await() == null) {
                     _ui.update { it.copy(noScooter = true) }
                     return@launch
+                }
+                if (ad == null) {
+                    // After a restart: find the saved scooter with a short scan (see Scanner.find for why not by address).
+                    _ui.update { it.copy(name = savedName.orEmpty(), busy = "Looking for scooter…") }
+                    ad = Scanner.find(context, savedName!!)
+                    if (ad == null) {
+                        _ui.update { it.copy(error = "Scooter not found. Is it on and in range, and is the other app closed (it allows one connection)?") }
+                        return@launch
+                    }
+                    connector.select(ad)
                 }
                 connectedTo = ad.address
                 _ui.update { it.copy(name = ad.name, busy = "Connecting…") }
                 val conn = connector.connect(this)
                 session = conn.session
                 val s = conn.session
-                val (pw, fromPending) = (if (conn.info.serial == ad.name) early.await() else store.loginCredential(conn.info.serial)) ?: run {
+                val (pw, fromPending) = (if (conn.info.serial == ad.name) early!!.await() else store.loginCredential(conn.info.serial)) ?: run {
                     _ui.update { it.copy(noScooter = true) }
                     return@launch
                 }
