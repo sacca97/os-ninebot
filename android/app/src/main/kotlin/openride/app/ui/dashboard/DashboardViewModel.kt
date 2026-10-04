@@ -178,7 +178,7 @@ class DashboardViewModel @Inject constructor(
             try {
                 when (s.setPower(on)) {
                     PowerResult.ALREADY_IN_STATE -> _ui.update { it.copy(notice = "Already ${if (on) "on" else "off"}; nothing sent.") }
-                    PowerResult.CHANGED -> _ui.update { it.copy(notice = if (on) "Powered on (ready to ride)." else "Powered off.") }
+                    PowerResult.CHANGED -> Unit // the state line on the home screen already shows it
                     PowerResult.NO_CHANGE -> _ui.update { it.copy(error = "Power state did not change. The command was NOT resent.") }
                 }
             } catch (e: CancellationException) {

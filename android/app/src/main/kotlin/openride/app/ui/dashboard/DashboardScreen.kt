@@ -59,12 +59,6 @@ fun DashboardScreen(
                 Tile("Battery", if (on) st.values["batt_pct"] else null, if (charging) "charging" else null, Modifier.weight(1f), onBattery)
                 Tile("Range", if (on) st.values["range"] else null, null, Modifier.weight(1f), onRange)
             }
-            if (!on && st.power != null) {
-                Text(
-                    "The controller and battery don't answer while the scooter is off.",
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp),
-                )
-            }
             if (settings.powerControl && st.power != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 24.dp)) {
                     Button({ vm.setPower(true) }, enabled = !st.powerBusy && st.power == false, modifier = Modifier.weight(1f).height(56.dp)) {
@@ -80,10 +74,6 @@ fun DashboardScreen(
                         Text("  Working…", style = MaterialTheme.typography.bodySmall)
                     }
                 }
-                Text(
-                    "Power off checks the speed first and only goes ahead if the scooter is standing still.",
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp),
-                )
             }
         }
         Spacer(Modifier.height(24.dp))
