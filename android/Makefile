@@ -4,6 +4,10 @@
 JAVA_HOME ?= $(firstword $(wildcard /opt/homebrew/opt/openjdk@21 $(HOME)/.jdks/jbr-21.0.11))
 export JAVA_HOME
 export ANDROID_HOME ?= $(HOME)/Library/Android/sdk
+# Let Gradle's installDebug follow SERIAL too (only when one is given).
+ifneq ($(SERIAL),)
+export ANDROID_SERIAL := $(SERIAL)
+endif
 
 GRADLE := ./gradlew
 ADB    := $(ANDROID_HOME)/platform-tools/adb $(if $(SERIAL),-s $(SERIAL))
