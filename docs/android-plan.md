@@ -374,3 +374,10 @@ look like a lock-out if hammered: keep to one attempt per connection and add a v
   grace period). Removed. Now: polling pauses immediately; the link is kept 60 s so unlocking is instant, then dropped (which also frees
   the scooter for the official app); it reconnects on return. No foreground service on purpose (see the discussion in the chat: a held
   connection blocks the official app and costs battery, and nothing needs polling unattended).
+
+## Navigation (status)
+- The home screen is the root. It connects to the scooter saved last (address + name remembered, credential stored): no scan, no probe.
+  With nothing saved, or the credential forgotten, it shows "No scooter paired" and an "Add scooter" button. Verified on an emulator.
+- Scanning lives on a secondary "Add scooter" page (also under More). Picking a scooter that already has a credential collapses the stack
+  to the home screen; otherwise the credential screen opens first and "Log in and open dashboard" also collapses to home. Back from home
+  leaves the app. App settings are under More.

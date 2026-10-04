@@ -49,12 +49,10 @@ fun AppRoot(navigator: Navigator) {
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { dashboard.onBackground() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { dashboard.onForeground() }
 
+    // The home screen is the root: back from it leaves the app (background handling then drops the link).
     BackHandler(enabled = stack.size > 1) {
-        when (top) {
-            Screen.Dashboard -> dashboard.leave() // disconnects
-            Screen.Device -> { device.cancel(); navigator.pop() }
-            else -> navigator.pop()
-        }
+        if (top == Screen.Device) device.cancel()
+        navigator.pop()
     }
 
     Scaffold(topBar = {
@@ -62,9 +60,9 @@ fun AppRoot(navigator: Navigator) {
             title = {
                 Text(
                     when (top) {
-                        Screen.Scan -> "OpenRide (unofficial)"
+                        Screen.Scan -> "Add scooter"
                         Screen.Device -> deviceUi.name.ifEmpty { "Scooter" }
-                        Screen.Dashboard -> dashUi.name.ifEmpty { "Scooter" }
+                        Screen.Dashboard -> dashUi.name.ifEmpty { "OpenRide" }
                         Screen.Battery -> "Battery"
                         Screen.Ride -> "Range and ride"
                         Screen.ScooterInfo -> "Scooter info"
@@ -74,12 +72,14 @@ fun AppRoot(navigator: Navigator) {
                 )
             },
             actions = {
-                if (top == Screen.Scan) TextButton({ navigator.push(Screen.Settings) }) { Text("Settings") }
                 if (top == Screen.Device) TextButton({ navigator.push(Screen.Debug) }) { Text("Log") }
                 if (top == Screen.Dashboard) {
                     TextButton({ menuOpen = true }) { Text("More") }
                     DropdownMenu(menuOpen, { menuOpen = false }) {
-                        DropdownMenuItem({ Text("Scooter info") }, { menuOpen = false; navigator.push(Screen.ScooterInfo) })
+                        if (!dashUi.noScooter) {
+                            DropdownMenuItem({ Text("Scooter info") }, { menuOpen = false; navigator.push(Screen.ScooterInfo) })
+                        }
+                        DropdownMenuItem({ Text("Add scooter") }, { menuOpen = false; navigator.push(Screen.Scan) })
                         DropdownMenuItem({ Text("App settings") }, { menuOpen = false; navigator.push(Screen.Settings) })
                         DropdownMenuItem({ Text("Log") }, { menuOpen = false; navigator.push(Screen.Debug) })
                     }
@@ -91,7 +91,7 @@ fun AppRoot(navigator: Navigator) {
             when (top) {
                 Screen.Scan -> ScanScreen()
                 Screen.Device -> DeviceScreen(device)
-                Screen.Dashboard -> DashboardScreen(dashboard, { navigator.push(Screen.Battery) }, { navigator.push(Screen.Ride) })
+                Screen.Dashboard -> DashboardScreen(dashboard, { navigator.push(Screen.Battery) }, { navigator.push(Screen.Ride) }, { navigator.push(Screen.Scan) })
                 Screen.Battery -> BatteryScreen(dashboard)
                 Screen.Ride -> RideScreen(dashboard)
                 Screen.ScooterInfo -> ScooterInfoScreen(dashboard)

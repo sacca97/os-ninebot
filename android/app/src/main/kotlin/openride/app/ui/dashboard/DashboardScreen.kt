@@ -34,6 +34,7 @@ fun DashboardScreen(
     vm: DashboardViewModel,
     onBattery: () -> Unit,
     onRange: () -> Unit,
+    onAddScooter: () -> Unit,
     settingsVm: SettingsViewModel = hiltViewModel(),
 ) {
     val st by vm.ui.collectAsStateWithLifecycle()
@@ -43,7 +44,10 @@ fun DashboardScreen(
     Column(Modifier.verticalScroll(rememberScrollState())) {
         Messages(st.error, st.notice, vm::clearMessages)
         st.busy?.let { BusyRow(it) }
-        if (!st.connected && st.busy == null) {
+        if (st.noScooter) {
+            Text("No scooter paired", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 32.dp))
+            Button(onAddScooter, modifier = Modifier.padding(top = 16.dp)) { Text("Add scooter") }
+        } else if (!st.connected && st.busy == null) {
             Text("Disconnected.", modifier = Modifier.padding(vertical = 8.dp))
             Button({ vm.start() }) { Text("Reconnect") }
         }

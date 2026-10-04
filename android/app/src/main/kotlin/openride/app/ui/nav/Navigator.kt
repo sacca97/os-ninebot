@@ -20,11 +20,14 @@ sealed interface Screen {
 /** Back stack as state (the shape Navigation 3 uses), without the extra dependency. */
 @Singleton
 class Navigator @Inject constructor() {
-    private val _stack = MutableStateFlow<List<Screen>>(listOf(Screen.Scan))
+    private val _stack = MutableStateFlow<List<Screen>>(listOf(Screen.Dashboard))
     val stack: StateFlow<List<Screen>> = _stack
 
     val top: Screen get() = _stack.value.last()
     fun push(s: Screen) = _stack.update { if (it.last() == s) it else it + s }
+    /** Back to a single root screen (after picking a scooter, so "back" never returns to scanning or setup). */
+    fun resetTo(s: Screen) { _stack.value = listOf(s) }
+
     fun pop(): Boolean {
         if (_stack.value.size <= 1) return false
         _stack.update { it.dropLast(1) }

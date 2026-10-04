@@ -68,7 +68,7 @@ class DeviceViewModel @Inject constructor(
 
     fun openDashboard() {
         if (connector.inCooldown()) return
-        navigator.push(Screen.Dashboard)
+        navigator.resetTo(Screen.Dashboard)
     }
 
     fun clearMessages() = _ui.update { it.copy(error = null, notice = null) }

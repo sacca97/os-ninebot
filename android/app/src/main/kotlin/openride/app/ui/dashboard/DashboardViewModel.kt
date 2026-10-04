@@ -1,8 +1,10 @@
 package openride.app.ui.dashboard
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -16,12 +18,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import openride.app.ble.Scanner
 import openride.app.data.CredentialStore
 import openride.app.data.ScooterConnector
 import openride.app.data.SettingsRepository
 import openride.app.ui.describe
-import openride.app.ui.nav.Navigator
-import openride.app.ui.nav.Screen
 import openride.core.registers.Reg
 import openride.core.registers.Registers
 import openride.core.session.CredentialRejected
@@ -32,6 +33,8 @@ import javax.inject.Inject
 
 data class DashboardUiState(
     val name: String = "",
+    /** Nothing saved (or its credential is gone): the home screen offers to add one instead of connecting. */
+    val noScooter: Boolean = false,
     val busy: String? = null,
     val connected: Boolean = false,
     val power: Boolean? = null,
@@ -43,10 +46,10 @@ data class DashboardUiState(
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val connector: ScooterConnector,
     private val store: CredentialStore,
     private val settings: SettingsRepository,
-    private val navigator: Navigator,
 ) : ViewModel() {
     private val _ui = MutableStateFlow(DashboardUiState())
     val ui: StateFlow<DashboardUiState> = _ui
@@ -80,27 +83,45 @@ class DashboardViewModel @Inject constructor(
 
     fun clearMessages() = _ui.update { it.copy(error = null, notice = null) }
 
-    /** Idempotent: safe to call again after rotation. */
+    private var connectedTo: String? = null
+
+    /**
+     * Connects to the selected scooter, else to the one saved last (no scan). Idempotent: calling it again for the same
+     * scooter does nothing; for a different one it switches. With nothing saved it just reports [DashboardUiState.noScooter].
+     */
     fun start() {
-        if (connJob?.isActive == true || connector.inCooldown()) return
-        _ui.update { DashboardUiState(name = connector.selected.value?.name.orEmpty(), busy = "Connecting…") }
+        if (connector.inCooldown()) return
+        val wanted = connector.selected.value?.address
+        if (connJob?.isActive == true) {
+            if (wanted == null || wanted == connectedTo) return
+            stop() // another scooter was picked
+        }
+        _ui.update { DashboardUiState() }
         connJob = viewModelScope.launch {
+            val me = currentCoroutineContext()[Job]
             try {
-                // The advertised name is the serial, so the credential (Keystore decrypt) loads while GATT connects.
                 val ad = connector.selected.value
+                    ?: settings.lastScooter()?.let { (address, name) -> Scanner.known(context, address, name) }?.also { connector.select(it) }
+                // The advertised name is the serial, so the credential (Keystore decrypt) loads while GATT connects.
                 val early = ad?.let { async { store.loginCredential(it.name) } }
+                if (ad == null || early?.await() == null) {
+                    _ui.update { it.copy(noScooter = true) }
+                    return@launch
+                }
+                connectedTo = ad.address
+                _ui.update { it.copy(name = ad.name, busy = "Connecting…") }
                 val conn = connector.connect(this)
                 session = conn.session
                 val s = conn.session
-                val (pw, fromPending) = (if (conn.info.serial == ad?.name) early?.await() else store.loginCredential(conn.info.serial)) ?: run {
-                    _ui.update { it.copy(error = "No credential stored for ${conn.info.serial}. Import or pair first.") }
+                val (pw, fromPending) = (if (conn.info.serial == ad.name) early.await() else store.loginCredential(conn.info.serial)) ?: run {
+                    _ui.update { it.copy(noScooter = true) }
                     return@launch
                 }
                 _ui.update { it.copy(busy = "Logging in…") }
                 s.login(pw) // one attempt, no retry
                 if (fromPending) store.promotePending(conn.info.serial)
                 _ui.update { it.copy(busy = null, connected = true) }
-                ad?.let { settings.setLastScooter(it.address, it.name) } // next launch connects without scanning
+                settings.setLastScooter(ad.address, ad.name) // next launch connects without scanning
                 launch {
                     s.notifications.collect { n ->
                         if (n.data.size >= 4 && n.data[0].toInt() == 0x02 && n.data[1].toInt() == Registers.POWER_STATE_IDX) {
@@ -119,7 +140,7 @@ class DashboardViewModel @Inject constructor(
                 _ui.update { it.copy(error = describe(e)) }
             } finally {
                 withContext(NonCancellable) { session?.close(); session = null }
-                connJob = null
+                if (connJob === me) connJob = null
                 _ui.update { it.copy(busy = null, connected = false) }
             }
         }
@@ -130,9 +151,6 @@ class DashboardViewModel @Inject constructor(
         powerJob?.cancel(); powerJob = null
         _ui.update { it.copy(connected = false, busy = null, powerBusy = false, power = null) }
     }
-
-    /** Leaving the screen disconnects. */
-    fun leave() { stop(); navigator.pop() }
 
     /**
      * One request in flight at a time (the scooter is not known to cope with more), so the cycle time is the number
