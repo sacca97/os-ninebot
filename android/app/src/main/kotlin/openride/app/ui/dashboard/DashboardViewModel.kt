@@ -11,6 +11,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -51,6 +52,30 @@ class DashboardViewModel @Inject constructor(
     private var connJob: Job? = null
     private var powerJob: Job? = null
     private var session: ScooterSession? = null
+
+    /** Polling only runs while the app is on screen; in the background it is suspended (nothing changes unattended). */
+    private val foreground = MutableStateFlow(true)
+    private var idleJob: Job? = null
+    private var droppedWhileIdle = false
+
+    /** App left the screen: stop polling now, and drop the connection (and the single-app lock) after a grace period. */
+    fun onBackground() {
+        foreground.value = false
+        if (connJob?.isActive != true) return
+        idleJob?.cancel()
+        idleJob = viewModelScope.launch {
+            delay(IDLE_DISCONNECT_MS)
+            droppedWhileIdle = true
+            stop()
+        }
+    }
+
+    /** Back on screen: resume polling at once, or reconnect if the grace period ran out. */
+    fun onForeground() {
+        foreground.value = true
+        idleJob?.cancel(); idleJob = null
+        if (droppedWhileIdle) { droppedWhileIdle = false; start() }
+    }
 
     fun clearMessages() = _ui.update { it.copy(error = null, notice = null) }
 
@@ -117,6 +142,7 @@ class DashboardViewModel @Inject constructor(
         var staticsDone = false
         var cycle = 0
         while (currentCoroutineContext().isActive) {
+            foreground.first { it } // suspended here while the app is in the background
             val started = System.currentTimeMillis()
             val on = s.powerState()
             _ui.update { it.copy(power = on) }
@@ -167,6 +193,7 @@ class DashboardViewModel @Inject constructor(
     override fun onCleared() { connJob?.cancel(); powerJob?.cancel() }
 
     private companion object {
+        const val IDLE_DISCONNECT_MS = 60_000L
         const val CYCLE_MS = 1_000L // fast values every second
         const val SLOW_EVERY = 5 // the rest every 5 s
         val FAST = setOf("batt_pct", "batt_v", "batt_a", "status", "charging", "avg_speed", "speed_26", "mode", "range")

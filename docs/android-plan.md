@@ -351,3 +351,15 @@ look like a lock-out if hammered: keep to one attempt per connection and add a v
   connection) when a credential is stored; a scan result with a stored credential also skips the probe screen ("Credential" button
   on each card opens the old screen). The credential decrypts while GATT connects.
 - **Polling:** one cycle per second (power + FAST registers: battery, current, status, speed, mode, range); the rest every 5th cycle; static values last.
+
+## Credential import/export and foreground-only polling (status)
+- **Format** (same in the app and `f2`): the 16-byte password as 32 hex characters on one line, the same as `~/.config/f2probe/app_key.hex`.
+  Input tolerates whitespace, `:` separators, a `0x` prefix and either case; output is upper case with a trailing newline.
+  Shared parser: `CredentialHex` (core) and `parse_key_text` (Python), both unit-tested.
+- **App:** the credential screen imports from a typed/pasted string or "From file" (reads at most 1 KB), and exports behind the device
+  screen lock: copy to the clipboard (flagged sensitive) or "Save file" (clear text, keep it private). ❓ untested on a phone: the file
+  pickers need a device.
+- **Python:** `f2 keys --import FILE`, `f2 keys --export FILE [--force]` (mode 600, no silent overwrite), `f2 keys --set HEX`.
+  A bad import leaves the stored key unchanged.
+- **Polling:** only while the app is on screen. In the background polling is suspended; after 60 s the connection is dropped (releasing the
+  scooter's single-app lock) and it reconnects when the app returns. ❓ untested on a phone.

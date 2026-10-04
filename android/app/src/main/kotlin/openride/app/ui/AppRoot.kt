@@ -14,6 +14,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import openride.app.ui.dashboard.DashboardScreen
 import openride.app.ui.dashboard.DashboardViewModel
@@ -33,6 +35,9 @@ fun AppRoot(navigator: Navigator) {
     val device: DeviceViewModel = hiltViewModel()
     val dashboard: DashboardViewModel = hiltViewModel()
     val deviceUi by device.ui.collectAsStateWithLifecycle()
+
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { dashboard.onBackground() }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { dashboard.onForeground() }
 
     BackHandler(enabled = stack.size > 1) {
         when (top) {

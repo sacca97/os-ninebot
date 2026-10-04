@@ -59,6 +59,27 @@ fun DeviceScreen(vm: DeviceViewModel) {
 
     LaunchedEffect(Unit) { if (st.info == null && st.busy == null) vm.probe() }
 
+    val openFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val text = try {
+            ctx.contentResolver.openInputStream(uri)?.use { input ->
+                val buf = ByteArray(1024) // a credential file is ~33 bytes; never read more than this
+                String(buf, 0, input.read(buf).coerceAtLeast(0), Charsets.US_ASCII)
+            }
+        } catch (e: Exception) { null }
+        if (text == null) vm.report(error = "Could not read that file.") else vm.importCredential(text)
+    }
+    val saveFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        val pw = exported
+        if (uri == null || pw == null) return@rememberLauncherForActivityResult
+        val ok = try {
+            ctx.contentResolver.openOutputStream(uri, "wt")?.use { it.write((pw + "\n").toByteArray()) } != null
+        } catch (e: Exception) { false }
+        exported = null
+        if (ok) vm.report(notice = "Saved. The file holds the scooter password in clear text: keep it private.")
+        else vm.report(error = "Could not write the file.")
+    }
+
     val gate = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         if (r.resultCode == Activity.RESULT_OK) scope.launch { exported = vm.exportCredentialHex() }
     }
@@ -86,7 +107,11 @@ fun DeviceScreen(vm: DeviceViewModel) {
                 }
             }
             Text("Credential", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
-            Text("Import the 32-hex-character password the official app uses (nothing on the scooter is changed).", style = MaterialTheme.typography.bodySmall)
+            Text(
+                "Import a 32-hex-character password: typed or pasted, or from a text file (the file `f2 keys --export` writes). " +
+                    "Nothing on the scooter is changed.",
+                style = MaterialTheme.typography.bodySmall,
+            )
             OutlinedTextField(
                 hex, { hex = it }, label = { Text("Password (32 hex chars)") }, singleLine = true,
                 textStyle = TextStyle(fontFamily = FontFamily.Monospace),
@@ -94,6 +119,7 @@ fun DeviceScreen(vm: DeviceViewModel) {
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                 Button({ if (vm.importCredential(hex)) hex = "" }) { Text("Import") }
+                OutlinedButton({ openFile.launch(arrayOf("text/plain", "*/*")) }) { Text("From file") }
                 if (st.hasCredential) {
                     OutlinedButton({ vm.forgetCredential() }) { Text("Forget") }
                     OutlinedButton({
@@ -129,6 +155,7 @@ fun DeviceScreen(vm: DeviceViewModel) {
             title = { Text("Scooter password") },
             text = { Text(pw, fontFamily = FontFamily.Monospace) },
             confirmButton = {
+                TextButton({ saveFile.launch("scooter-key.txt") }) { Text("Save file") }
                 TextButton({
                     val clip = ClipData.newPlainText("password", pw)
                     if (Build.VERSION.SDK_INT >= 33) {

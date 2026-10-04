@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 import openride.app.data.ScooterConnector
 import openride.app.data.CredentialStore
 import openride.app.ui.describe
+import openride.core.crypto.CredentialHex
 import openride.app.ui.nav.Navigator
 import openride.app.ui.nav.Screen
 import openride.core.session.CredentialRejected
@@ -72,19 +73,22 @@ class DeviceViewModel @Inject constructor(
 
     fun clearMessages() = _ui.update { it.copy(error = null, notice = null) }
 
-    fun importCredential(hex: String): Boolean {
+    /** From the text field or a file: same format (32 hex characters), see [CredentialHex]. */
+    fun importCredential(text: String): Boolean {
         val info = _ui.value.info ?: return false
-        val clean = hex.filter { !it.isWhitespace() && it != ':' }
-        if (clean.length != 32 || !clean.all { it in "0123456789abcdefABCDEF" }) {
+        val pw = CredentialHex.parse(text)
+        if (pw == null) {
             _ui.update { it.copy(error = "Credential must be exactly 32 hex characters (16 bytes).") }
             return false
         }
         viewModelScope.launch {
-            store.save(info.serial, ByteArray(16) { clean.substring(it * 2, it * 2 + 2).toInt(16).toByte() })
+            store.save(info.serial, pw)
             _ui.update { it.copy(hasCredential = true, error = null, notice = "Credential imported.") }
         }
         return true
     }
+
+    fun report(error: String? = null, notice: String? = null) = _ui.update { it.copy(error = error, notice = notice) }
 
     fun forgetCredential() {
         val info = _ui.value.info ?: return
@@ -97,7 +101,7 @@ class DeviceViewModel @Inject constructor(
     /** Call only after the device-credential gate has passed. */
     suspend fun exportCredentialHex(): String? {
         val info = _ui.value.info ?: return null
-        return store.load(info.serial)?.joinToString("") { "%02X".format(it) }
+        return store.load(info.serial)?.let { CredentialHex.format(it) }
     }
 
     /** Replaces the scooter's password (the flow verified live with `f2 pair`). */

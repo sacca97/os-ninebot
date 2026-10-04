@@ -41,6 +41,20 @@ def load_app_key() -> bytes | None:
     return key
 
 
+def parse_key_text(text: str) -> bytes:
+    """The credential file / string format shared with the Android app: 32 hex chars (whitespace, ':' and a 0x prefix tolerated)."""
+    clean = "".join(c for c in text if not c.isspace() and c != ":")
+    if clean[:2] in ("0x", "0X"):
+        clean = clean[2:]
+    try:
+        key = bytes.fromhex(clean)
+    except ValueError:
+        key = b""
+    if len(key) != 16 or len(clean) != 32:
+        raise ValueError("expected exactly 32 hex characters (16 bytes)")
+    return key
+
+
 def save_app_key(key: bytes, source: str) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     APP_KEY_FILE.write_text(key.hex().upper() + "\n")
@@ -97,8 +111,26 @@ def cmd_decode(args) -> None:
 
 
 def cmd_keys(args) -> None:
-    if args.set:
-        save_app_key(bytes.fromhex(args.set), "manual")
+    try:
+        if args.set:
+            save_app_key(parse_key_text(args.set), "manual")
+        if args.import_file:
+            src = Path(args.import_file)
+            save_app_key(parse_key_text(src.read_text()[:1024]), f"file {src}")
+    except (ValueError, OSError) as e:
+        sys.exit(f"Import failed: {e}")
+    if args.export_file:
+        key = load_app_key()
+        if key is None:
+            sys.exit("No app key stored; nothing to export.")
+        dest = Path(args.export_file)
+        if dest.exists() and not args.force:
+            sys.exit(f"{dest} exists; use --force to overwrite it.")
+        dest.touch(mode=0o600)
+        dest.chmod(0o600)
+        dest.write_text(key.hex().upper() + "\n")
+        print(f"Exported the app key to {dest} (mode 600). Keep it private.")
+        return
     key = load_app_key()
     print(f"{APP_KEY_FILE}: {key.hex().upper() if key else '(none)'}")
 
@@ -298,8 +330,11 @@ def main() -> None:
     s.add_argument("--save-app-key", action="store_true", help="store the official app key for live use")
     s.set_defaults(func=cmd_decode)
 
-    s = sub.add_parser("keys", help="show / set the stored app key")
-    s.add_argument("--set", metavar="HEX")
+    s = sub.add_parser("keys", help="show / set / import / export the stored app key")
+    s.add_argument("--set", metavar="HEX", help="32 hex characters")
+    s.add_argument("--import", dest="import_file", metavar="FILE", help="read the key from a file (the Android app's export works)")
+    s.add_argument("--export", dest="export_file", metavar="FILE", help="write the key to a file (one line, mode 600)")
+    s.add_argument("--force", action="store_true", help="overwrite an existing export file")
     s.set_defaults(func=cmd_keys)
 
     s = sub.add_parser("scan", help="passive scan for scooters")

@@ -294,3 +294,31 @@ def test_set_password_retries_after_silence(monkeypatch):
     monkeypatch.setattr(transport.asyncio, "sleep", no_sleep)
     asyncio.run(client.set_password(wait=60))
     assert len(sent) == 4 and all(p.cmd == Cmd.PING and p.data == APP_KEY for p in sent)
+
+
+def test_key_text_format_and_file_round_trip(tmp_path, monkeypatch, capsys):
+    """Same format as the Android app: 32 hex chars, tolerant on input, one upper-case line on output."""
+    from f2probe import cli
+
+    hexs = "A0A1A2A3A4A5A6A7A8A9AAABACADAEAF"
+    assert cli.parse_key_text(hexs.lower() + "\n") == bytes(range(0xA0, 0xB0))
+    assert cli.parse_key_text("0x" + ":".join(hexs[i : i + 2] for i in range(0, 32, 2))) == bytes(range(0xA0, 0xB0))
+    for bad in ("", hexs[:-2], hexs + "00", hexs[:-1] + "G"):
+        with pytest.raises(ValueError):
+            cli.parse_key_text(bad)
+
+    monkeypatch.setattr(cli, "CONFIG_DIR", tmp_path / "cfg")
+    monkeypatch.setattr(cli, "APP_KEY_FILE", tmp_path / "cfg" / "app_key.hex")
+    src, out = tmp_path / "in.txt", tmp_path / "out.txt"
+    src.write_text(hexs.lower() + "\n")
+    ns = lambda **kw: type("A", (), {"set": None, "import_file": None, "export_file": None, "force": False, **kw})()  # noqa: E731
+    cli.cmd_keys(ns(import_file=str(src)))
+    assert cli.load_app_key() == bytes(range(0xA0, 0xB0))
+    cli.cmd_keys(ns(export_file=str(out)))
+    assert out.read_text() == hexs + "\n" and (out.stat().st_mode & 0o777) == 0o600
+    with pytest.raises(SystemExit):  # no silent overwrite
+        cli.cmd_keys(ns(export_file=str(out)))
+    src.write_text("nonsense")
+    with pytest.raises(SystemExit):
+        cli.cmd_keys(ns(import_file=str(src)))
+    assert cli.load_app_key() == bytes(range(0xA0, 0xB0))  # a bad import leaves the stored key alone
