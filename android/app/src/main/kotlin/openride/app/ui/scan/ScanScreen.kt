@@ -36,29 +36,21 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import openride.app.ble.BluetoothAccess
 import openride.app.ui.Messages
 import openride.app.ui.Spinner
-
-private fun requiredPermissions(): Array<String> =
-    if (Build.VERSION.SDK_INT >= 31) arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
-    else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-
-private fun hasPermissions(c: Context) =
-    requiredPermissions().all { ContextCompat.checkSelfPermission(c, it) == PackageManager.PERMISSION_GRANTED }
-
-private fun bluetoothOn(c: Context) = c.getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled == true
 
 @Composable
 fun ScanScreen(vm: ScanViewModel = hiltViewModel()) {
     val ctx = LocalContext.current
     val st by vm.ui.collectAsStateWithLifecycle()
-    var granted by remember { mutableStateOf(hasPermissions(ctx)) }
-    var btOn by remember { mutableStateOf(bluetoothOn(ctx)) }
+    var granted by remember { mutableStateOf(BluetoothAccess.hasPermissions(ctx)) }
+    var btOn by remember { mutableStateOf(BluetoothAccess.isEnabled(ctx)) }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        granted = hasPermissions(ctx)
+        granted = BluetoothAccess.hasPermissions(ctx)
     }
     val enableBt = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        btOn = bluetoothOn(ctx)
+        btOn = BluetoothAccess.isEnabled(ctx)
     }
 
     Text(
@@ -71,7 +63,7 @@ fun ScanScreen(vm: ScanViewModel = hiltViewModel()) {
             if (Build.VERSION.SDK_INT >= 31) "Bluetooth permission is needed to find and connect to your scooter. It is not used for location."
             else "Android 11 and older require the location permission (and location services switched on) to scan for Bluetooth devices. Your location is not used or stored.",
         )
-        Button({ permLauncher.launch(requiredPermissions()) }, Modifier.padding(top = 8.dp)) { Text("Grant permission") }
+        Button({ permLauncher.launch(BluetoothAccess.requiredPermissions()) }, Modifier.padding(top = 8.dp)) { Text("Grant permission") }
         return
     }
     if (!btOn) {

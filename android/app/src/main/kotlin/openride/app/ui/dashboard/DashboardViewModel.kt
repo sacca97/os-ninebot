@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import openride.app.ble.BluetoothAccess
 import openride.app.ble.Scanner
 import openride.app.data.CredentialStore
 import openride.app.data.ScooterConnector
@@ -37,6 +38,9 @@ data class DashboardUiState(
     val name: String = "",
     /** Nothing saved (or its credential is gone): the home screen offers to add one instead of connecting. */
     val noScooter: Boolean = false,
+    /** Not connecting: the radio is off / the permission is missing. The screen offers the fix instead of an error. */
+    val bluetoothOff: Boolean = false,
+    val permissionNeeded: Boolean = false,
     val busy: String? = null,
     val connected: Boolean = false,
     val power: Boolean? = null,
@@ -87,6 +91,19 @@ class DashboardViewModel @Inject constructor(
 
     private var connectedTo: String? = null
 
+    init {
+        // Connect as soon as the radio comes on; when it goes off, drop quietly (no "link closed" error).
+        viewModelScope.launch {
+            BluetoothAccess.enabledFlow(context).collect { on ->
+                if (on && _ui.value.bluetoothOff) start()
+                if (!on && wantsConnection) { stop(); _ui.update { DashboardUiState(bluetoothOff = true) } }
+            }
+        }
+    }
+
+    /** Set once the home screen has asked to connect; the radio flow ignores changes before that. */
+    private var wantsConnection = false
+
     /** Wakes the poll loop early (the scooter just reported it is on). */
     private val wake = Channel<Unit>(Channel.CONFLATED)
 
@@ -95,6 +112,9 @@ class DashboardViewModel @Inject constructor(
      * scooter does nothing; for a different one it switches. With nothing saved it just reports [DashboardUiState.noScooter].
      */
     fun start() {
+        wantsConnection = true
+        if (!BluetoothAccess.hasPermissions(context)) { _ui.update { DashboardUiState(permissionNeeded = true) }; return }
+        if (!BluetoothAccess.isEnabled(context)) { _ui.update { DashboardUiState(bluetoothOff = true) }; return }
         if (connector.inCooldown()) return
         val wanted = connector.selected.value?.address
         if (connJob?.isActive == true) {
@@ -141,7 +161,7 @@ class DashboardViewModel @Inject constructor(
                 connector.markRejected()
                 _ui.update { it.copy(error = describe(e)) }
             } catch (e: Throwable) {
-                _ui.update { it.copy(error = describe(e)) }
+                if (BluetoothAccess.isEnabled(context)) _ui.update { it.copy(error = describe(e)) }
             } finally {
                 withContext(NonCancellable) { session?.close(); session = null }
                 if (connJob === me) connJob = null

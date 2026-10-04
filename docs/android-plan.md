@@ -389,3 +389,9 @@ look like a lock-out if hammered: keep to one attempt per connection and add a v
   as the scooter reports it is off. Before, the poll loop kept reading dead controller registers, each holding the single request slot
   for up to 9 s, which delayed the power-state checks. On a power-on notification the loop wakes at once.
 - The scooter's own switching time (docs say 3-4 s) is a floor we cannot change. ❓ not yet timed on the real scooter.
+
+## Bluetooth off / permission missing (status)
+- The home screen checks the permission and the radio before connecting. With the radio off it shows "Bluetooth is off" and a
+  "Turn on Bluetooth" button (system dialog) instead of a connection error; it connects by itself the moment the radio comes on, and
+  switching the radio off while connected drops the link quietly. A missing permission shows "Bluetooth permission needed" and an Allow button.
+  Verified on an emulator (off, on, and the system dialog opening); not tried against a real scooter.
