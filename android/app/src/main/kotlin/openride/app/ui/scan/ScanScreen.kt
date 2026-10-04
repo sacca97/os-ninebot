@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -38,6 +37,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import openride.app.ui.Messages
+import openride.app.ui.Spinner
 
 private fun requiredPermissions(): Array<String> =
     if (Build.VERSION.SDK_INT >= 31) arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
@@ -82,7 +82,7 @@ fun ScanScreen(vm: ScanViewModel = hiltViewModel()) {
     LaunchedEffect(Unit) { vm.start() }
     Messages(st.error, null) {}
     Row(verticalAlignment = Alignment.CenterVertically) {
-        if (st.scanning) CircularProgressIndicator(Modifier.padding(end = 12.dp).height(24.dp))
+        if (st.scanning) Spinner(Modifier.padding(end = 12.dp))
         OutlinedButton({ vm.rescan() }) { Text(if (st.scanning) "Rescan" else "Scan") }
     }
     LazyColumn(Modifier.padding(top = 8.dp)) {

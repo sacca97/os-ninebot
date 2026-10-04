@@ -12,7 +12,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -26,6 +25,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import openride.app.ui.BusyRow
 import openride.app.ui.Messages
+import openride.app.ui.Spinner
 import openride.app.ui.settings.SettingsViewModel
 
 /** Home: name, power, battery and range. Everything else is one tap away (battery and range open their own pages). */
@@ -74,7 +74,7 @@ fun DashboardScreen(
                 }
                 if (st.powerBusy) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                        CircularProgressIndicator(Modifier.height(20.dp))
+                        Spinner()
                         Text("  Working…", style = MaterialTheme.typography.bodySmall)
                     }
                 }
