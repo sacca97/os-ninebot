@@ -111,12 +111,13 @@ class DashboardViewModel @Inject constructor(
     /**
      * One request in flight at a time (the scooter is not known to cope with more), so the cycle time is the number
      * of reads x ~60 ms. Order: power first, then what the screen shows, then the slow-changing values, and the
-     * static ones (serial, firmware) last. The FAST set refreshes every cycle, the rest every [SLOW_EVERY] cycles.
+     * static ones (serial, firmware) last. One cycle every [CYCLE_MS]; the FAST set each cycle, the rest every [SLOW_EVERY] cycles.
      */
     private suspend fun poll(s: ScooterSession) {
         var staticsDone = false
         var cycle = 0
         while (currentCoroutineContext().isActive) {
+            val started = System.currentTimeMillis()
             val on = s.powerState()
             _ui.update { it.copy(power = on) }
             if (on) {
@@ -128,10 +129,9 @@ class DashboardViewModel @Inject constructor(
                     readInto(s, Registers.all.filter { it.static })
                     staticsDone = true
                 }
-                delay(CYCLE_PAUSE_MS)
-            } else {
-                delay(OFF_POLL_MS)
             }
+            // Fixed period, whatever the reads took: nothing on the scooter changes faster than this.
+            delay((CYCLE_MS - (System.currentTimeMillis() - started)).coerceAtLeast(0))
             cycle++
         }
     }
@@ -167,9 +167,8 @@ class DashboardViewModel @Inject constructor(
     override fun onCleared() { connJob?.cancel(); powerJob?.cancel() }
 
     private companion object {
-        const val CYCLE_PAUSE_MS = 250L
-        const val OFF_POLL_MS = 1_000L
-        const val SLOW_EVERY = 5
+        const val CYCLE_MS = 1_000L // fast values every second
+        const val SLOW_EVERY = 5 // the rest every 5 s
         val FAST = setOf("batt_pct", "batt_v", "batt_a", "status", "charging", "avg_speed", "speed_26", "mode", "range")
     }
 }

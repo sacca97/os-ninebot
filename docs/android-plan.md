@@ -350,4 +350,4 @@ look like a lock-out if hammered: keep to one attempt per connection and add a v
 - **Flow:** the last scooter (address + name) is remembered; at launch the app goes straight to the dashboard (no scan, no probe
   connection) when a credential is stored; a scan result with a stored credential also skips the probe screen ("Credential" button
   on each card opens the old screen). The credential decrypts while GATT connects.
-- **Polling:** one cycle = power + FAST registers (battery, current, status, speed, mode, range); the rest every 5th cycle; static values last.
+- **Polling:** one cycle per second (power + FAST registers: battery, current, status, speed, mode, range); the rest every 5th cycle; static values last.
