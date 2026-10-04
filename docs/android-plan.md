@@ -363,3 +363,14 @@ look like a lock-out if hammered: keep to one attempt per connection and add a v
   A bad import leaves the stored key unchanged.
 - **Polling:** only while the app is on screen. In the background polling is suspended; after 60 s the connection is dropped (releasing the
   scooter's single-app lock) and it reconnects when the app returns. ❓ untested on a phone.
+
+## UI structure, theme, background behaviour (status)
+- **Theme** ❓ not seen on a device yet: Material 3, light/dark follows the phone live (Material You colours on Android 12+), edge-to-edge,
+  and a DayNight window theme so there is no white flash at launch in dark mode.
+- **Home** shows only: scooter name, on/off state, battery %, range, and the power on / power off buttons. Battery opens Battery
+  (charge, current, health, cells, cell temperatures); Range opens Range and ride (range, predicted, mode, speed, mileage, temperature).
+  "More" has Scooter info (settings read-only, diagnostics, device, experimental), App settings and Log.
+- **Background:** a bug in `MainActivity` disconnected the instant the screen locked (an old ON_STOP hook calling `stop()` that overrode the
+  grace period). Removed. Now: polling pauses immediately; the link is kept 60 s so unlocking is instant, then dropped (which also frees
+  the scooter for the official app); it reconnects on return. No foreground service on purpose (see the discussion in the chat: a held
+  connection blocks the official app and costs battery, and nothing needs polling unattended).

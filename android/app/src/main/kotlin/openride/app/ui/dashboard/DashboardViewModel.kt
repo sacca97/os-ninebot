@@ -31,6 +31,7 @@ import openride.core.session.ScooterTimeout
 import javax.inject.Inject
 
 data class DashboardUiState(
+    val name: String = "",
     val busy: String? = null,
     val connected: Boolean = false,
     val power: Boolean? = null,
@@ -82,7 +83,7 @@ class DashboardViewModel @Inject constructor(
     /** Idempotent: safe to call again after rotation. */
     fun start() {
         if (connJob?.isActive == true || connector.inCooldown()) return
-        _ui.update { DashboardUiState(busy = "Connecting…") }
+        _ui.update { DashboardUiState(name = connector.selected.value?.name.orEmpty(), busy = "Connecting…") }
         connJob = viewModelScope.launch {
             try {
                 // The advertised name is the serial, so the credential (Keystore decrypt) loads while GATT connects.

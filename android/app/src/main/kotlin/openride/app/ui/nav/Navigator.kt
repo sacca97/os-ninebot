@@ -10,6 +10,9 @@ sealed interface Screen {
     data object Scan : Screen
     data object Device : Screen
     data object Dashboard : Screen
+    data object Battery : Screen
+    data object Ride : Screen
+    data object ScooterInfo : Screen
     data object Debug : Screen
     data object Settings : Screen
 }
