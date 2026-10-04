@@ -242,12 +242,17 @@ rest every ~5 s, one request at a time. Stop polling when the screen is backgrou
 | Mode | ctrl | 0x75 | 1 | 0 NORMAL, 1 ECO, 2 SPORT | ✅ reads 2; names from ownbee ❓ |
 | Error / alarm | ctrl | 0x1B / 0x1C | 1 | u16 | ✅ |
 | Status word | ctrl | 0x1D | 1 | u16 (0x0800 seen) | ✅ (no lock bit here) |
-| Battery current | batt | 0x33 | 1 | s16 / 100 A | ❓ |
-| Battery health | batt | 0x3B | 1 | u16 % | ❓ |
-| Body temp | ctrl | 0x3E | 1 | s16 / 10 °C | ❓ |
+| Battery current | batt | 0x33 | 1 | s16 / 100 A; negative = charging | ✅ live from Python, both signs |
+| Battery health | batt | 0x3B | 1 | u16 % | ✅ live from Python (98) |
+| Cell voltages | batt | 0x40 | 10 | u16 mV each, 10S | ✅ live from Python; also in the app capture |
+| Cell temperatures | batt | 0x35 | 1 | 2 bytes, °C + 20 | ✅ live from Python |
+| Charging | ctrl | 0x1D | 1 | bit 8 of the status word | ✅ live from Python, both states |
+| Body temp | ctrl | 0x3E | 1 | s16 / 10 °C | ✅ live from Python (27.0) |
+| Range predicted | ctrl | 0x25 | 1 | u16 / 100 km | ✅ live from Python |
+| KERS | ctrl | 0x7B | 1 | 0 weak, 1 medium, 2 strong | ✅ live from Python |
+| TCS / walk mode | ctrl | 0xF3 / 0x77 | 1 | 0 off, 1 on | ✅ live from Python, toggled both ways |
 | Controller voltage | ctrl | 0x47 | 1 | u16 / 100 V | ❓ |
-| Range predicted | ctrl | 0x25 | 1 | u16 / 100 km | ❓ |
-| KERS / cruise / tail light | ctrl | 0x7B / 0x7C / 0x7D | 1 | u16 | ❓ |
+| Cruise / tail light | ctrl | 0x7C / 0x7D | 1 | u16 | ❓ (meaning unknown) |
 
 Show ❓ rows in an "Experimental" section, hidden by default. **Do not display or read the "BT pairing code"
 register (0x17 ×3 on ctrl)**; it's not needed.
