@@ -11,7 +11,7 @@ endif
 
 GRADLE := ./gradlew
 ADB    := $(ANDROID_HOME)/platform-tools/adb $(if $(SERIAL),-s $(SERIAL))
-PKG    := openride.app
+PKG    := com.sacca.openride
 APK    := app/build/outputs/apk/debug/app-debug.apk
 
 .PHONY: help build test lint check install run start stop logs uninstall devices clean

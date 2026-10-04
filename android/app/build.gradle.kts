@@ -7,10 +7,10 @@ plugins {
 }
 
 android {
-    namespace = "openride.app"
+    namespace = "com.sacca.openride.app"
     compileSdk = 36
     defaultConfig {
-        applicationId = "openride.app"
+        applicationId = "com.sacca.openride"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

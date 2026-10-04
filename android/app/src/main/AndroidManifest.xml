@@ -11,14 +11,14 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
 
     <application
-        android:name="openride.app.OpenRideApp"
+        android:name="com.sacca.openride.app.OpenRideApp"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="OpenRide"
         android:theme="@style/Theme.OpenRide">
-        <activity android:name="openride.app.MainActivity" android:exported="true">
+        <activity android:name="com.sacca.openride.app.MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
