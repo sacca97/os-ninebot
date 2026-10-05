@@ -4,6 +4,7 @@
 btsnoop*.log
 captures/
 app_key*
+key.txt
 *.pending
 *.bak
 .env
