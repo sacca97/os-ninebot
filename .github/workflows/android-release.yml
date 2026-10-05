@@ -21,7 +21,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          cache: gradle
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: false
       - uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
@@ -40,6 +43,7 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'openride' }}
         run: |
           test -n "$KEYSTORE_BASE64" && test -n "$KEYSTORE_PASSWORD" && test -n "$KEY_PASSWORD" || {
             echo 'Configure KEYSTORE_BASE64, KEYSTORE_PASSWORD and KEY_PASSWORD secrets.'
@@ -47,12 +51,16 @@ jobs:
           }
           umask 077
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/release.jks
-          printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=openride\nkeyPassword=%s\n' \
-            "$KEYSTORE_PASSWORD" "$KEY_PASSWORD" > android/keystore.properties
+          keytool -certreq -keystore android/release.jks -alias "$KEY_ALIAS" \
+            -storepass:env KEYSTORE_PASSWORD -keypass:env KEY_PASSWORD \
+            -file "$RUNNER_TEMP/openride-signing-check.csr"
+          rm -f "$RUNNER_TEMP/openride-signing-check.csr"
+          printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > android/keystore.properties
       - name: Build and check
         working-directory: android
         run: |
-          ./gradlew --no-daemon :core:test :app:lintRelease :app:assembleRelease
+          ./gradlew --no-daemon --build-cache :core:test :app:lintRelease :app:assembleRelease
           cp app/build/outputs/apk/release/app-release.apk "openride-$GITHUB_REF_NAME.apk"
       - name: Publish APK
         env:
