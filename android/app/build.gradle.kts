@@ -16,7 +16,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1"
+        versionName = "0.0.0"
     }
     // Release signing comes from android/keystore.properties (created by `make keystore`, git-ignored). Without it the
     // release APK is unsigned and cannot be installed.

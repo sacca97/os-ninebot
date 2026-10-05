@@ -15,12 +15,14 @@ ADB    := $(ANDROID_HOME)/platform-tools/adb $(if $(SERIAL),-s $(SERIAL))
 # com.sacca.openride. start/stop/logs/uninstall act on the debug app, or on the release one with VARIANT=release
 # (the *-release targets set it for you).
 VARIANT ?= debug
+VERSION ?=
+export OPENRIDE_VERSION := $(VERSION)
 PKG    := com.sacca.openride$(if $(filter release,$(VARIANT)),,.debug)
 APK    := app/build/outputs/apk/debug/app-debug.apk
 APK_RELEASE := app/build/outputs/apk/release/app-release.apk
 
 .PHONY: help build test lint check install run start stop logs uninstall devices clean \
-        keystore release install-release run-release uninstall-release
+        keystore build-release release install-release run-release uninstall-release
 
 help:  ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -65,12 +67,25 @@ keystore:  ## create the local release signing key (android/release.jks + keysto
 	 chmod 600 keystore.properties release.jks && \
 	 echo "Created release.jks and keystore.properties. BACK THEM UP: updates to an installed release app must be signed with this same key."
 
-release:  ## build the signed, minified release APK (needs `make keystore` once)
+build-release:  ## build the signed, minified release APK locally (needs `make keystore` once)
 	@test -f keystore.properties || { echo "No signing key yet: run 'make keystore' once."; exit 1; }
 	$(GRADLE) :app:assembleRelease
 	@echo "-> $(APK_RELEASE)"
 
-install-release: release  ## build and install the release app (next to the debug one)
+release:  ## bump, commit, tag and push VERSION=0.0.1; GitHub builds and publishes
+	@set -eu; \
+	python3 -c 'import os, re, sys; sys.exit(0 if re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", os.environ["OPENRIDE_VERSION"]) else "Usage: make release VERSION=x.y.z (no leading zeros)")'; \
+	test -z "$$(git status --porcelain)" || { echo "Working tree not clean."; exit 1; }; \
+	if git rev-parse --verify --quiet "refs/tags/$$OPENRIDE_VERSION" >/dev/null; then echo "Tag already exists."; exit 1; fi; \
+	if ! grep -Fq "versionName = \"$$OPENRIDE_VERSION\"" app/build.gradle.kts; then \
+	  python3 -c 'import os, re; from pathlib import Path; p = Path("app/build.gradle.kts"); s = p.read_text(); code = int(re.search(r"versionCode = (\d+)", s)[1]) + 1; assert code <= 2100000000, "Android versionCode limit reached"; s = re.sub(r"versionCode = \d+", "versionCode = " + str(code), s, count=1); s = re.sub(r"versionName = \"[^\"\n]+\"", "versionName = " + chr(34) + os.environ["OPENRIDE_VERSION"] + chr(34), s, count=1); p.write_text(s)'; \
+	  git add app/build.gradle.kts; \
+	  git commit -m "Release $$OPENRIDE_VERSION"; \
+	fi; \
+	git tag "$$OPENRIDE_VERSION"; \
+	git push --atomic origin HEAD "refs/tags/$$OPENRIDE_VERSION"
+
+install-release: build-release  ## build and install the release app (next to the debug one)
 	@output=$$($(ADB) install -r $(APK_RELEASE) 2>&1); status=$$?; \
 	 printf '%s\n' "$$output"; \
 	 if [ $$status -ne 0 ]; then \

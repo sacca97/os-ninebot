@@ -6,6 +6,8 @@ Not affiliated with Segway-Ninebot.
 
 ## Android
 
+Download the APK from [GitHub Releases](https://github.com/sacca97/os-ninebot/releases).
+
 See [build and install instructions](android/README.md).
 
 ## Python CLI
