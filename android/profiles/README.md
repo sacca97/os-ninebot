@@ -64,17 +64,19 @@ changes and tests in Python `transport.assert_safe` and Kotlin `FrameGuard`.
 
 ## F2 Pro speed uncertainty
 
-Controller `0x26` remains `speed_26`, an experimental **raw unknown value**.
+Controller `0x26` remains `speed_26`, an unverified **raw unknown value**.
 The local evidence is `docs/f2pro-findings.md`, “What the official app polls”:
 the official app repeatedly reads it, and it returned zero at rest. The findings
-still describe its meaning as unknown; those observations alone do not identify
-live speed or its scale. It is a candidate to observe while moving, not an
-established speed reading. Controller `0x65` keeps the reference label
-“Average speed”; live versus trip-average semantics are also unresolved.
+also record the Ninebot ES protocol's `0x26` current-speed mapping (signed
+16-bit, 0.1 km/h units). That strengthens the hypothesis, but meaning and scale
+on a moving F2 Pro still need verification. Controller `0x65` keeps the reference
+label “Average speed”; the owner confirms it is not live speed. Its averaging
+period/reset behavior remains unresolved.
 
 The existing power-off interlock continues checking both registers. Neither its
 behavior while moving nor this profile refactor has been verified on hardware.
-Enable experimental readings to watch `0x26` on More → Scooter info. A confirmed
+`0x26` is polled each cycle and appears directly below Average speed on Range
+and ride, without enabling experimental readings, for observation. A confirmed
 mapping can then receive the stable `speed` key, encoding and scale.
 
 For the complete research-to-PR workflow, see

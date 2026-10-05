@@ -47,7 +47,7 @@ fun BatteryScreen(vm: DashboardViewModel) = InfoPage(vm) { v, readings ->
 @Composable
 fun RideScreen(vm: DashboardViewModel) = InfoPage(vm) { v, readings ->
     Section("Range", listOf("range", "range_pred"), v, readings)
-    Section("Ride", listOf("mode", "speed", "avg_speed", "mileage", "temp"), v, readings)
+    Section("Ride", listOf("mode", "speed", "avg_speed", "speed_26", "mileage", "temp"), v, readings)
 }
 
 @Composable
@@ -67,7 +67,7 @@ fun ScooterInfoScreen(vm: DashboardViewModel, settingsVm: SettingsViewModel = hi
 @Composable
 private fun Section(title: String, keys: List<String>, values: Map<String, String>, readings: List<Reg>) {
     Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
-    readings.filter { it.key in keys }.forEach { r -> LabelValue(r.label, values[r.key]) }
+    keys.mapNotNull { key -> readings.find { it.key == key } }.forEach { r -> LabelValue(r.label, values[r.key]) }
 }
 
 /** "3922 3922 … mV (spread 156 mV)" -> the ten voltages, or null if it is not that format (e.g. "n/a"). */

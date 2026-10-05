@@ -67,6 +67,28 @@ Unverified unless noted: each item is inferred from a single snapshot. Serial-li
 - The app does not read the 0xB1-0xBA mirror block seen in the sweep, so it is not part of the app's protocol use.
 - Added to f2probe/registers.py and Registers.kt: cell_voltages (BMS 0x40 x10), cell_temps (BMS 0x35); tests use the captured bytes.
 
+## Live speed investigation (2026-10-04)
+
+- Owner confirms controller `0x65` (Average speed) is not live speed. Its
+  averaging period/reset behavior is unknown.
+- The [Ninebot ES communication protocol, PDF pages 8–9](https://wiki.scooterhacking.org/lib/exe/fetch.php?media=ninebot_es_scooter_protocol_918.pdf)
+  identifies `0x26` (`NB_INF_SPEED`) as current speed, signed 16-bit, in
+  0.1 km/h units, and separately identifies `0x65` as average speed.
+  This is another model's specification, not F2 Pro hardware verification.
+- Our F2 Pro capture shows repeated official-app polling of controller board
+  `0x20`, register `0x26`, which reads zero at rest. The ES mapping strengthens
+  its candidacy. Proposed decoding is signed little-endian 16-bit / 10 km/h;
+  meaning, sign and scale while moving on the F2 Pro remain unverified.
+- Compare raw `0x26` with the scooter dashboard through stopped → moving →
+  stopped and at least two speeds. Synthetic examples of the hypothesis:
+  `32 00` = raw 50 = 5.0 km/h; `64 00` = raw 100 = 10.0 km/h.
+  The Android Range and ride page now shows the raw candidate below Average
+  speed and polls it each cycle without the experimental switch.
+  `f2 read 0x26 --target ctrl --len 2` provides a read-only Python snapshot.
+- The existing raw zero checks on `0x65` and `0x26` remain unchanged. Neither
+  establishes a verified motion detector; a nonzero average speed may refuse
+  power-off even after stopping. No power-off experiments while moving.
+
 ## KERS (energy recovery) setting, from a before/after sweep
 - Changing KERS from medium to weak in the official app changed only controller 0x7B: 1 -> 0 (user-reported labels).
   So 0 = weak, 1 = medium; 2 = strong is a guess. The other differences in the diff were live noise (battery %, cell mV, range, one

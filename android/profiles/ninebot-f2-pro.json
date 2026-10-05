@@ -154,7 +154,7 @@
       "fast": true,
       "experimental": false,
       "verification": "observed; see docs/android-plan.md",
-      "evidence": "Label from reference register map; zero at rest. Live versus trip-average semantics unverified."
+      "evidence": "Reference map labels 0x65 Average speed; owner confirms it is not live speed. Averaging period/reset behavior unverified."
     },
     {
       "key": "mode",
@@ -307,7 +307,7 @@
     },
     {
       "key": "speed_26",
-      "label": "Register 0x26 (unknown; speed candidate)",
+      "label": "Live speed candidate (0x26, raw)",
       "device": "0x20",
       "register": "0x26",
       "bytes": 2,
@@ -316,9 +316,9 @@
       },
       "static": false,
       "fast": true,
-      "experimental": true,
+      "experimental": false,
       "verification": "unverified",
-      "evidence": "docs/f2pro-findings.md: official app repeatedly polls controller 0x26; zero at rest. Meaning, scale and response while moving are unknown."
+      "evidence": "docs/f2pro-findings.md: official app polls controller 0x26; zero at rest. Ninebot ES protocol maps 0x26 to signed current speed in 0.1 km/h units. F2 Pro meaning/scale while moving remain unknown; retain raw decoding."
     },
     {
       "key": "ctrl_v",

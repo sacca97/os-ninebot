@@ -128,8 +128,9 @@ A profile with power support must define its state mapping, notifications, exact
 on/off packets and explicit zero checks. An unreadable, malformed or nonzero
 check must prevent power-off; writes are never automatically repeated to obtain
 a state change. Report whether the speed meaning and interlock behavior have
-actually been verified. The F2 Pro's `0x26` is still unknown: repeated official-app
-polling and zero at rest are the entire basis for considering it a speed candidate.
+actually been verified. The F2 Pro's `0x26` remains unverified while moving:
+official-app polling, zero at rest, and the Ninebot ES protocol's current-speed
+mapping support the hypothesis, but do not verify it on this model.
 
 ## 4. Check the change and open a pull request
 

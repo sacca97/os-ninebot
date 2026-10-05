@@ -32,7 +32,7 @@ class ProfileTest {
 
     @Test fun incompleteReadingIsRejectedAndSpeedCandidateRemainsRaw() {
         val candidate = DeviceProfiles.default.reading("speed_26")
-        assertTrue(candidate.experimental)
+        assertTrue(!candidate.experimental && candidate.fast)
         assertTrue(candidate.evidence.contains("unknown"))
         assertEquals("raw 55", candidate.decode(byteArrayOf(55, 0)))
         assertThrows(IllegalArgumentException::class.java) { candidate.decode(byteArrayOf(55)) }
