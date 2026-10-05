@@ -43,7 +43,7 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'openride' }}
+          KEY_ALIAS: openride-release
         run: |
           test -n "$KEYSTORE_BASE64" && test -n "$KEYSTORE_PASSWORD" && test -n "$KEY_PASSWORD" || {
             echo 'Configure KEYSTORE_BASE64, KEYSTORE_PASSWORD and KEY_PASSWORD secrets.'

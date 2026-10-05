@@ -61,9 +61,9 @@ devices:  ## list adb devices
 keystore:  ## create the local release signing key (android/release.jks + keystore.properties, both git-ignored)
 	@test ! -e keystore.properties || { echo "keystore.properties already exists; not overwriting it."; exit 1; }
 	@PW=$$(openssl rand -hex 16); \
-	 $(JAVA_HOME)/bin/keytool -genkeypair -keystore release.jks -alias openride -keyalg RSA -keysize 4096 -validity 10000 \
+	 $(JAVA_HOME)/bin/keytool -genkeypair -keystore release.jks -alias openride-release -keyalg RSA -keysize 4096 -validity 10000 \
 	   -storepass $$PW -keypass $$PW -dname "CN=OpenRide, O=local" && \
-	 printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=openride\nkeyPassword=%s\n' $$PW $$PW > keystore.properties && \
+	 printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=openride-release\nkeyPassword=%s\n' $$PW $$PW > keystore.properties && \
 	 chmod 600 keystore.properties release.jks && \
 	 echo "Created release.jks and keystore.properties. BACK THEM UP: updates to an installed release app must be signed with this same key."
 

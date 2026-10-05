@@ -21,7 +21,7 @@ Use a clean working tree. `make build-release` builds locally.
 
 Set GitHub Actions secrets `KEYSTORE_BASE64` (base64 of `release.jks`),
 `KEYSTORE_PASSWORD` and `KEY_PASSWORD` from your existing signing key.
-Set `KEY_ALIAS` if its alias is not `openride`; check with `keytool -list -keystore release.jks`.
+The signing alias is `openride-release`, matching `make keystore`.
 Keep the same key for updates. Versions use `MAJOR.MINOR.PATCH`.
 
 `:core` contains JVM protocol/session code; `:app` contains Compose UI, BLE and
