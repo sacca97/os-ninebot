@@ -1,20 +1,12 @@
 # Device profiles
 
-Each `*.json` here is validated by `scripts/generate_profiles.py` and compiled into
-`:core` as typed Kotlin. Generation is a dependency of `compileKotlin`; Python 3 is
-required at build time. No profile parser or downloadable configuration runs on
-the phone. `:core:test` also checks the compiler's validation paths.
+`scripts/generate_profiles.py` validates these JSON files and generates Kotlin
+for `:core` during compilation. Python 3 is required; profiles are fixed at build time.
 
-To add a model using the existing Ninebot protocol, copy `ninebot-f2-pro.json`,
-choose a unique `id` and display `name`, and replace its model-specific mappings.
-Remove unsupported readings. Set `pairing` and/or `power` to `null` if unsupported.
-Do not assume another model uses the F2 Pro addresses or power commands.
-
-The scan screen offers model selection when more than one profile is compiled.
-Manufacturer IDs and UART UUIDs identify a family, not necessarily a model. The
-selected profile ID is saved alongside the last scooter; older saved devices use
-the F2 Pro profile. A removed profile produces an error instead of silently
-reconnecting with another model's mapping.
+To add a model, copy `ninebot-f2-pro.json`, choose a unique `id` and `name`, and
+replace its discovery, GATT and register mappings with verified values. Remove
+unsupported readings; set unsupported `pairing` or `power` to `null`. Record
+`verification` and `evidence`. Shared UUIDs do not establish model compatibility.
 
 ## Readings
 
@@ -35,49 +27,23 @@ through the existing Settings switch.
 - `ascii`, `firmware`, `cells`, `temperatures`, and `current`: named Kotlin
   decoders for the existing formats. A new format needs a decoder implementation.
 
-Scalar values are limited to four bytes; cell arrays use 16-bit elements.
-Response lengths are checked before decoding. Unknown fields, decoder names,
-protocol identifiers, invalid UUIDs, duplicate IDs/reading keys, and missing
-power check references fail the build. `verification` and optional `evidence`
-record the provenance; transferring a mapping to another model requires its own
-verification. The stable keys drive common UI sections; extra experimental
-readings appear on More → Scooter info with experimental readings enabled.
+Scalars support up to four bytes; cells use 16-bit elements. Invalid fields,
+UUIDs, decoder/protocol identifiers, duplicate IDs/keys and missing power-check
+references fail the build. Response lengths are checked before decoding.
 
-## Protocol and safety
+## Protocol and power
 
-`protocol`, `encryption`, `authentication`, and `pairing` select known Kotlin
-implementations. Currently only the existing Ninebot framing, crypto and
-INIT/AUTH flow, plus weak-mode pairing, are implemented. Different algorithms or
-handshake flows require Kotlin code and synthetic test vectors, not arbitrary
-expressions in JSON. No real names, serials, keys or captures belong in profiles.
+Profiles select the existing Ninebot framing, crypto, INIT/AUTH and weak-mode
+pairing implementations. New protocols or decoders need Kotlin code and matching
+Python tests/vectors; JSON cannot define them.
 
-`power` defines the state register, notification format, exact on/off packets,
-and explicit raw zero checks by reading key. The current notification decoder
-supports `[marker, register, state little-endian]`. The configured checks must
-all return complete zero values before power-off. These checks are independent
-of experimental UI visibility.
+`power` defines state reads, notifications (`[marker, register, state_le16]`),
+exact on/off packets and readings that must return complete zero values before
+power-off. `FrameGuard` independently authorizes writes. Update it and Python
+`transport.assert_safe` together, with tests, for any new allowed write.
 
-Every outgoing packet still passes through `FrameGuard`. Its independent
-allowlist is deliberately not generated from profiles: JSON cannot authorize a
-new write. New write support must be researched in Python first, with matching
-changes and tests in Python `transport.assert_safe` and Kotlin `FrameGuard`.
-
-## F2 Pro speed uncertainty
-
-Controller `0x26` remains `speed_26`, an unverified **raw unknown value**.
-The local evidence is `docs/f2pro-findings.md`, “What the official app polls”:
-the official app repeatedly reads it, and it returned zero at rest. The findings
-also record the Ninebot ES protocol's `0x26` current-speed mapping (signed
-16-bit, 0.1 km/h units). That strengthens the hypothesis, but meaning and scale
-on a moving F2 Pro still need verification. Controller `0x65` keeps the reference
-label “Average speed”; the owner confirms it is not live speed. Its averaging
-period/reset behavior remains unresolved.
-
-The existing power-off interlock continues checking both registers. Neither its
-behavior while moving nor this profile refactor has been verified on hardware.
-`0x26` is polled each cycle and appears directly below Average speed on Range
-and ride, without enabling experimental readings, for observation. A confirmed
-mapping can then receive the stable `speed` key, encoding and scale.
-
-For the complete research-to-PR workflow, see
-[CONTRIBUTING.md](../../CONTRIBUTING.md).
+❓ The F2 Pro profile refactor and motion interlock are unverified on hardware.
+`speed_26` is raw and shown below Average speed without the experimental switch;
+its meaning and scale while moving remain unknown. `0x65` is average speed.
+See [speed evidence](../../docs/f2pro-findings.md#live-speed-investigation-2026-10-04)
+and the [development workflow](../../docs/porting.md).

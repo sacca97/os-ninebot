@@ -5,8 +5,7 @@ import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * Stateless Ninebot "encryption 1" primitives, implemented from the public specification at
- * https://nootnooot.codeberg.page/segway-ninebot-ble/.
+ * Stateless Ninebot "encryption 1" primitives, implemented from the spec in docs/android-plan.md §4.
  * On-air frame = header(3) | encrypted body (LEN+4) | tail(6).
  */
 object NinebotCrypto {

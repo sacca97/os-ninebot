@@ -1,35 +1,22 @@
 # OpenRide
 
-Open-source Android client for the Segway F2 Pro: credential import, info display, power on/off.
-Not affiliated with Segway-Ninebot; use at your own risk. See `../docs/android-plan.md`.
+Android client for the Segway F2 Pro: telemetry, credential import, pairing and
+power control. Not affiliated with Segway-Ninebot.
 
-    JAVA_HOME=<jdk21> ./gradlew :core:test :app:assembleDebug
+Build from this directory with JDK 21 and Python 3:
 
-`make help` lists the shortcuts. Debug and release are two separate apps on the phone:
+```sh
+JAVA_HOME=/path/to/jdk21 ./gradlew :core:test :app:assembleDebug :app:lintDebug
+make run
+```
 
-| | id | label | commands |
-|---|---|---|---|
-| debug | `com.sacca.openride.debug` | OpenRide Debug | `make run` |
-| release (signed, minified) | `com.sacca.openride` | OpenRide | `make keystore` once, then `make run-release` |
+Use `SERIAL=<adb serial>` to choose a phone. `make help` lists other commands.
+Debug installs as OpenRide Debug (`com.sacca.openride.debug`). For the separate
+release app (`com.sacca.openride`), run `make keystore` once, then `make run-release`.
+Back up the ignored `release.jks` and `keystore.properties`; updates need the same key.
 
-`make keystore` creates `release.jks` and `keystore.properties` (both git-ignored). Back them up: an installed release app can only be
-updated with APKs signed by the same key. Pick a phone with `SERIAL=<adb serial>`.
-
-- `:core` pure Kotlin protocol/crypto/session (JVM-testable, `crypto_vectors.json` is the gate)
-- `:app` Compose UI, BLE (`AndroidGattLink`), Keystore credential store
-
-Power control is on by default (verified on a real F2 Pro) and can be disabled in Settings. Never commit real credentials, serials or captures.
-
-Stack: Kotlin 2.2, Compose + Material 3, Hilt (KSP), DataStore, version catalog (`gradle/libs.versions.toml`),
-per-screen `@HiltViewModel`s, `collectAsStateWithLifecycle`, back stack as state (`Navigator`).
-
-Device-specific GATT, protocol selection, register addresses/decoding and power
-mappings live in [`profiles/`](profiles/README.md). JSON is validated and compiled
-into Kotlin during the build (requires Python 3); there is no runtime parser.
-The F2 Pro profile preserves the existing behavior. The profile refactor is
-unverified on hardware; controller `0x26` remains an experimental raw reading
-whose meaning and scale have not been confirmed while moving.
-
-To submit support for a new model, follow the repository's
-[contribution guide](../CONTRIBUTING.md), including capture handling, evidence,
-protocol coverage and the PR checklist.
+`:core` contains JVM protocol/session code; `:app` contains Compose UI, BLE and
+Keystore storage. [Device profiles](profiles/README.md) are compiled at build time.
+Power control has worked on a real F2 Pro; the profile refactor and motion
+interlock remain unverified on hardware. See [protocol findings](../docs/f2pro-findings.md)
+and [development workflow](../docs/porting.md).

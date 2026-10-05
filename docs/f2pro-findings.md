@@ -1,9 +1,16 @@
-# F2 Pro findings (from segway-pairing.pklg, iPhone official app)
+# F2 Pro protocol findings
 
-Scooter name / serial: `<scooter name>`. Encryption is the standard "encryption 1/2" AES-CTR+CBC-MAC
-scheme already implemented in `f2probe/crypto.py`; all 337 frames of the main session verify.
+Evidence: private iPhone official-app captures and live Python reads on an F2 Pro.
+The AES-CTR/CBC-MAC implementation in `f2probe/crypto.py` verifies all 337 frames
+of the main pairing session. Capture filenames below identify local evidence;
+the files and device identity are not published.
 
-## Handshake observed
+Status legend: ✅ verified on a real scooter · 🟡 matches a real capture, not
+verified live from our code · ❓ unverified. Software tests do not count as
+hardware verification.
+
+## Handshake
+
 - Reconnect with a stored password: `INIT(0x5B)` (name key) -> `PAIR/AUTH(0x5D)` with the 14-byte serial,
   counter starts at 2 (app key). Reply `PAIR idx=1` = success. No `PING(0x5C)` / `SET_PWD`.
 - Fresh pairing: stale-password AUTH frames get no reply; app then sends `PING(0x5C)` with the new 16-byte
@@ -11,7 +18,8 @@ scheme already implemented in `f2probe/crypto.py`; all 337 frames of the main se
   and authenticates with the new password.
 - The app identifies itself as `PHONE (0x3E)`, not `PC (0x3D)`.
 
-## What the app calls "lock / unlock" is almost certainly POWER off / on
+## Power control (official-app “lock / unlock”)
+
 BLE-board register `0x4D` is the power state (1 = on, 0 = off). It stays readable while the scooter is off
 because the BLE board stays alive, and while off the controller (0x20) and battery (0x22) boards do not answer
 reads. Confirmed live: "unlocked" in the app -> `0x4D`=1 and all reads work; "locked" -> `0x4D`=0.
@@ -35,9 +43,11 @@ Official-app writes in segway-pairing.pklg (session started "unlocked" = on, `0x
 - Status word `0x1D` reads `0x0800` (bytes `00 08`; bit 11 = "activated") and never changed.
 - Only 3 writes for the 4 requested actions; the final "unlock" is not in the trace.
 - Not yet verified whether the F2 Pro also has a real (immobilising) lock separate from power.
-- Nothing in f2probe sends these frames: `assert_safe` still refuses every WRITE.
+- Power control was later verified with `f2 power on/off`. `assert_safe` allows
+  only these exact power packets when power control is enabled.
 
 ## Register sweep (live read, scooter on; all READ frames, 2 bytes each, indices 0x00-0xFF per board)
+
 Unverified unless noted: each item is inferred from a single snapshot. Serial-like and key-like values are deliberately not recorded.
 
 - Auth with the key from the official app's pairing capture still works; the scooter answers on all three boards
@@ -56,6 +66,7 @@ Unverified unless noted: each item is inferred from a single snapshot. Serial-li
 - BLE board 0x05-0x0B and 0x70-0x77 repeat the scooter name; 0x60-0x66 and 0xCD-0xD4 read as other ASCII ids.
 
 ## What the official app polls (decoded from segway-comms.pklg and segway-pairing.pklg; same set in both)
+
 - Loop: BLE 0x4D (power), ctrl 0x1B, 0x1C, 0x1D, 0x22, 0x25, 0x26, 0x29, 0x75, 0x77. Once: ctrl 0x10, 0x1A, 0x3E, 0x67, 0x68,
   0x7B, 0x7D, 0xDA, 0xE4, 0xE7; BLE 0x50; BMS 0x10, 0x1B, 0x20, 0x31, 0x35, 0x40, 0x52, 0x53.
 - ctrl 0x22 is the battery percent the app shows (matches BMS 0x32 on the live read: 94 = 94). ctrl 0x26, BLE 0x50, BMS 0x53 read 0 at rest (ctrl 0x77 is walk mode, see below);
@@ -65,7 +76,7 @@ Unverified unless noted: each item is inferred from a single snapshot. Serial-li
   156 mV then, ~60 mV at 94 %). (verified against the live sweep, unverified in the Android app)
 - BMS 0x35 captured as 30 30 -> 28 C each with the +20 offset, consistent with the live read.
 - The app does not read the 0xB1-0xBA mirror block seen in the sweep, so it is not part of the app's protocol use.
-- Added to f2probe/registers.py and Registers.kt: cell_voltages (BMS 0x40 x10), cell_temps (BMS 0x35); tests use the captured bytes.
+- Added to f2probe/registers.py and Registers.kt: cell_voltages (BMS 0x40 x10), cell_temps (BMS 0x35).
 
 ## Live speed investigation (2026-10-04)
 
@@ -76,8 +87,7 @@ Unverified unless noted: each item is inferred from a single snapshot. Serial-li
   0.1 km/h units, and separately identifies `0x65` as average speed.
   This is another model's specification, not F2 Pro hardware verification.
 - Our F2 Pro capture shows repeated official-app polling of controller board
-  `0x20`, register `0x26`, which reads zero at rest. The ES mapping strengthens
-  its candidacy. Proposed decoding is signed little-endian 16-bit / 10 km/h;
+  `0x20`, register `0x26`, which reads zero at rest. This makes `0x26` a candidate for live speed. Proposed decoding is signed little-endian 16-bit / 10 km/h;
   meaning, sign and scale while moving on the F2 Pro remain unverified.
 - Compare raw `0x26` with the scooter dashboard through stopped → moving →
   stopped and at least two speeds. Synthetic examples of the hypothesis:
@@ -90,22 +100,26 @@ Unverified unless noted: each item is inferred from a single snapshot. Serial-li
   power-off even after stopping. No power-off experiments while moving.
 
 ## KERS (energy recovery) setting, from a before/after sweep
+
 - Changing KERS from medium to weak in the official app changed only controller 0x7B: 1 -> 0 (user-reported labels).
   So 0 = weak, 1 = medium; 2 = strong is a guess. The other differences in the diff were live noise (battery %, cell mV, range, one
   fluctuating value at ctrl 0x3A, and a few registers that answered in only one of the two sweeps).
 - Reading matches the existing `kers` register (ctrl 0x7B). Writing it is not implemented: `assert_safe` / `FrameGuard` still refuse it.
 
 ## KERS strong, TCS on (second before/after sweep)
+
 - KERS strong -> ctrl 0x7B = 2, so 0/1/2 = weak/medium/strong (confirmed for all three).
 - Turning TCS (traction control) on changed ctrl 0xF3: 0 -> 1 (it read 0 in two earlier sweeps with TCS off). Single observation; the
   only non-noise change besides 0x7B. Added as `tcs` (read-only) in f2probe/registers.py and Registers.kt (experimental).
 
 ## Walk mode (5 km/h) on
+
 - Turning walk mode on changed ctrl 0x77: 0 -> 1. That register is in the official app's polling loop, which fits.
   Added as `walk_mode` (read-only, experimental in the app). Only non-noise change in that diff, single observation.
 - Still unmapped from the app's list: ctrl 0x26, ctrl 0xE7 (reads 1), BLE 0x50, BMS 0x53.
 
 ## Toggle-back confirmation and charging
+
 - TCS off and walk mode off: ctrl 0xF3 and 0x77 both went 1 -> 0, so both registers are confirmed in both directions. KERS (0x7B) also went
   2 -> 1 (back to medium) in the same diff.
 - Battery current (BMS 0x33) while the scooter was charging and on: -1.31, -1.21, -1.14, -1.03, -1.00 A across five reads, while battery
@@ -113,6 +127,7 @@ Unverified unless noted: each item is inferred from a single snapshot. Serial-li
   discharge sign is not yet observed). The status word 0x1D stayed 0x0900 during charging, so no charge flag was found there.
 
 ## ECO mode, light, charger (sweep after those changes)
+
 - Mode SPORT -> ECO: ctrl 0x75 2 -> 1 (0 NORMAL, 1 ECO, 2 SPORT, as already mapped). ctrl 0x82 and 0x84 also went 2 -> 1 with it,
   so they are probably per-mode parameters (speed/power tier?). Predicted range jumped 37.6 -> ~52 km and actual range 30.7 -> 42.2 km
   with the mode (range is mode dependent). Unverified.
@@ -125,6 +140,7 @@ Unverified unless noted: each item is inferred from a single snapshot. Serial-li
   (0x37, 0x36, 0x35) during charging: unknown, possibly charge related.
 
 ## Charger re-plug (only change: charger plugged back in)
+
 - ctrl 0x1D 0x0800 -> 0x0900 and BMS 0x33 +0.08 A -> -1.10 A, both reversed by unplugging and restored by plugging in. So
   **0x1D bit 8 = charging** and **BMS 0x33 negative = charging**, observed in both directions. Added `charging` (read-only).
 - BMS 0x30 low byte also follows it (0x01 unplugged, 0x43 charging); meaning of the other bits unknown. ctrl 0x5D went 0 -> 0xFFFF once
@@ -132,8 +148,10 @@ Unverified unless noted: each item is inferred from a single snapshot. Serial-li
 - Not charge related: BMS 0x29 (flipped between 0 and 1 independently of the charger).
 
 ## Pairing from Python, and single slot
-- `f2 pair --force` first crashed on the first unanswered SET_PWD (fixed: it now retries every 2 s like the Android app). The second run paired
-  after the button press, and the phone's official app then asked to be paired again: **the scooter keeps one password** (observed).
+
+- `f2 pair --force` repeats SET_PWD every 2 s until accepted or timed out. Pairing
+  succeeded after the button press; the official app then required pairing again.
+  **The scooter keeps one password** (observed).
 - Register 0x0D-0x14 on the BLE board returns the stored password to a logged-in reader (seen in a sweep): do not dump or share it.
 - Read lengths: 20 bytes in one request works (cells at BMS 0x40; 14, 4 and 8 bytes also). Lengths above 20 and request pipelining were tried
   while the scooter turned out to be OFF (no reply from ctrl/BMS then), so those two results are inconclusive.

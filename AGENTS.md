@@ -7,7 +7,7 @@ Guidance for AI coding agents and new contributors. Unofficial open-source clien
 - `f2probe/`, `tests/`, `scripts/`: Python research/reference tool. New protocol work is tried here first.
 - `android/`: Kotlin app ("OpenRide"). `:core` is pure Kotlin/JVM (protocol, crypto, session), `:app` is Compose + BLE.
 - `android/test-vectors/crypto_vectors.json`: synthetic vectors both sides must pass byte for byte.
-- `docs/`: `f2pro-findings.md` (protocol facts), `android-plan.md` (spec + status legend), `porting.md` (workflow).
+- `docs/`: `f2pro-findings.md` (protocol facts + status legend), `porting.md` (workflow).
 
 ## Commands
 - Everything: `scripts/check_all.sh` (pytest, regenerate vectors, Android `:core` tests). Needs JDK 21 (`JAVA_HOME`).
@@ -18,7 +18,7 @@ Guidance for AI coding agents and new contributors. Unofficial open-source clien
 - Writes to the scooter stay behind `transport.assert_safe` (Python) and `FrameGuard` (Kotlin); change both together, with tests.
 - Never commit real captures (`*.pklg`, btsnoop), credentials (`app_key*`), or the real scooter name/serial (it is key
   material). Vectors and tests use synthetic values; real-capture tests read `F2_SCOOTER_NAME`.
-- Mark anything not verified on a real scooter as such (legend in `docs/android-plan.md`).
+- Mark anything not verified on a real scooter as such (legend in `docs/f2pro-findings.md`).
 - The Android crypto is a clean-room implementation from the spec; do not copy `miauth` (AGPL-3.0) source into it.
 
 ## External references (not vendored; open when needed)
