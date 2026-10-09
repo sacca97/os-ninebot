@@ -61,16 +61,16 @@ class DeviceViewModel @Inject constructor(
             } catch (e: Throwable) {
                 _ui.update { it.copy(error = describe(e)) }
             } finally {
-                conn?.session?.close()
+                withContext(NonCancellable) { conn?.session?.close() }
                 _ui.update { it.copy(busy = null) }
             }
         }
     }
 
-    fun cancel() { job?.cancel(); job = null; _ui.update { it.copy(busy = null, pairingPending = false) } }
+    fun cancel() { job?.cancel() } // Keep ownership until the cancelled operation's finally block has closed its link.
 
     fun openDashboard() {
-        if (connector.inCooldown()) return
+        if (connector.inCooldown() || job?.isActive == true) return
         navigator.resetTo(Screen.Dashboard)
     }
 
@@ -78,10 +78,11 @@ class DeviceViewModel @Inject constructor(
 
     /**
      * From the text field or a file: same format (32 hex characters), see [CredentialHex]. The password is NOT trusted until the
-     * scooter accepts it: it goes into the pending slot, one real login is attempted, and only then is it stored. A wrong one
+     * scooter accepts it: one real login is attempted, and only then is it stored. A wrong one
      * never replaces a working credential, and a rejection starts the usual login cool-down.
      */
     fun importCredential(text: String): Boolean {
+        if (job?.isActive == true) return false
         val info = _ui.value.info ?: return false
         val pw = CredentialHex.parse(text)
         if (pw == null) {
@@ -92,31 +93,33 @@ class DeviceViewModel @Inject constructor(
             _ui.update { it.copy(error = "Wait for the login cool-down to end, then import again.") }
             return false
         }
-        job?.cancel()
+        _ui.update { it.copy(busy = "Connecting to verify credential…", error = null, notice = null) }
         job = viewModelScope.launch {
-            _ui.update { it.copy(busy = "Verifying credential…", error = null, notice = null) }
             var conn: com.sacca.openride.app.data.Connection? = null
+            var verified = false
             try {
-                store.savePending(info.serial, pw)
                 conn = connector.connect(this)
+                check(conn.info.serial == info.serial) { "The connected scooter differs from the one selected for import. Select it again." }
+                _ui.update { it.copy(busy = "Verifying credential…") }
                 conn.session.login(pw) // one attempt, no retry
-                store.promotePending(info.serial)
+                // Import does not change the scooter password, so no recovery/pending slot is needed.
+                store.save(info.serial, pw)
+                store.discardPending(info.serial)
+                verified = true
                 _ui.update { it.copy(hasCredential = true, notice = "Credential verified.") }
-                navigator.resetTo(Screen.Dashboard)
             } catch (e: CancellationException) {
-                withContext(NonCancellable) { store.discardPending(info.serial) }
                 throw e
             } catch (e: CredentialRejected) {
-                store.discardPending(info.serial)
                 connector.markRejected()
                 _ui.update { it.copy(error = "The scooter rejected this credential, so it was not saved. Check that it is the one the official app or `f2` currently uses.") }
             } catch (e: Throwable) {
-                store.discardPending(info.serial)
                 _ui.update { it.copy(error = "Could not verify the credential, so it was not saved: ${describe(e)}") }
             } finally {
                 withContext(NonCancellable) { conn?.session?.close() }
                 _ui.update { it.copy(busy = null) }
             }
+            // Dashboard immediately reconnects. Release the verification connection before it starts.
+            if (verified) navigator.resetTo(Screen.Dashboard)
         }
         return true
     }
@@ -124,6 +127,7 @@ class DeviceViewModel @Inject constructor(
     fun report(error: String? = null, notice: String? = null) = _ui.update { it.copy(error = error, notice = notice) }
 
     fun forgetCredential() {
+        if (job?.isActive == true) return
         val info = _ui.value.info ?: return
         viewModelScope.launch {
             store.forget(info.serial)
@@ -139,9 +143,9 @@ class DeviceViewModel @Inject constructor(
 
     /** Replaces the scooter's password (the flow verified live with `f2 pair`). */
     fun pair() {
+        if (job?.isActive == true) return
         if (connector.selected.value?.profile?.pairing == null) return
         val serial = _ui.value.info?.serial ?: return
-        job?.cancel()
         job = viewModelScope.launch {
             _ui.update { it.copy(busy = "Pairing…", error = null, notice = null) }
             var conn: com.sacca.openride.app.data.Connection? = null
@@ -177,7 +181,7 @@ class DeviceViewModel @Inject constructor(
             } catch (e: Throwable) {
                 _ui.update { it.copy(error = describe(e)) }
             } finally {
-                conn?.session?.close()
+                withContext(NonCancellable) { conn?.session?.close() }
                 _ui.update { it.copy(busy = null, pairingPending = false) }
             }
         }

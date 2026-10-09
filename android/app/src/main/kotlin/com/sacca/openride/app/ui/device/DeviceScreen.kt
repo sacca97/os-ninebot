@@ -94,6 +94,7 @@ fun DeviceScreen(vm: DeviceViewModel) {
         st.info?.let {
             Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Column(Modifier.padding(12.dp)) {
+                    com.sacca.openride.core.profile.modelNameFromSerial(it.serial)?.let { model -> Text(model) }
                     Text("Serial: ${it.serial}")
                     Text("Password stored on scooter: ${if (it.passwordStored) "yes" else "no"}")
                     Text("Credential in this app: ${if (st.hasCredential) "yes" else "no"}")

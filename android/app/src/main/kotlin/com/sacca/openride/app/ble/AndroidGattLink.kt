@@ -26,6 +26,14 @@ import java.util.UUID
 
 class BleConnectException(message: String) : RuntimeException(message)
 
+internal suspend fun <T> awaitGattStage(stage: String, timeoutMs: Long, done: CompletableDeferred<T>): T =
+    try {
+        withTimeout(timeoutMs) { done.await() }
+    } catch (_: TimeoutCancellationException) {
+        // A radio timeout is a failure to show/retry, not a user cancellation to silently discard.
+        throw BleConnectException("$stage timed out after ${timeoutMs / 1000}s")
+    }
+
 /** Raw BluetoothGatt wrapped in coroutines: connect, MTU, discover, enable notify, serialised writes. */
 @SuppressLint("MissingPermission")
 class AndroidGattLink private constructor(private val profile: GattProfile) : ScooterLink {
@@ -40,12 +48,14 @@ class AndroidGattLink private constructor(private val profile: GattProfile) : Sc
     private var pendingWrite: CompletableDeferred<Int>? = null
 
     private val connected = CompletableDeferred<Unit>()
+    private val disconnected = CompletableDeferred<Unit>()
     private val mtuDone = CompletableDeferred<Unit>()
     private val servicesDone = CompletableDeferred<Int>()
     private val notifyEnabled = CompletableDeferred<Int>()
 
     private val callback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
+            if (newState == BluetoothProfile.STATE_DISCONNECTED) disconnected.complete(Unit)
             if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
                 connected.complete(Unit)
             } else {
@@ -91,7 +101,7 @@ class AndroidGattLink private constructor(private val profile: GattProfile) : Sc
         val g = device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
             ?: throw BleConnectException("connectGatt returned null")
         gate = g
-        withTimeout(15_000) { connected.await() }
+        awaitGattStage("Bluetooth connection", 15_000, connected)
         // Shortest connection interval: every request/response costs at least one interval each way.
         g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
         // A bigger MTU lets each frame go out as a single write (one callback instead of one per 20 bytes).
@@ -99,7 +109,7 @@ class AndroidGattLink private constructor(private val profile: GattProfile) : Sc
         withTimeoutOrNull(1_500) { mtuDone.await() }
         // Wait for onServicesDiscovered before anything else.
         if (!g.discoverServices()) throw BleConnectException("discoverServices failed")
-        val st = withTimeout(10_000) { servicesDone.await() }
+        val st = awaitGattStage("Service discovery", 10_000, servicesDone)
         if (st != BluetoothGatt.GATT_SUCCESS) throw BleConnectException("service discovery status=$st")
         val svc = g.getService(UUID.fromString(profile.service)) ?: throw BleConnectException("UART service missing")
         writeChar = svc.getCharacteristic(UUID.fromString(profile.write)) ?: throw BleConnectException("write char missing")
@@ -116,7 +126,7 @@ class AndroidGattLink private constructor(private val profile: GattProfile) : Sc
             run { cccd.value = notifyValue; g.writeDescriptor(cccd) }
         }
         if (!ok) throw BleConnectException("enabling notifications failed")
-        val ns = withTimeout(5_000) { notifyEnabled.await() }
+        val ns = awaitGattStage("Enabling notifications", 5_000, notifyEnabled)
         if (ns != BluetoothGatt.GATT_SUCCESS) throw BleConnectException("notify enable status=$ns")
     }
 
@@ -152,9 +162,18 @@ class AndroidGattLink private constructor(private val profile: GattProfile) : Sc
     }
 
     override suspend fun close() {
-        gate?.let { it.disconnect(); it.close() }
+        val g = gate
         gate = null
-        rx.close()
+        try {
+            if (g != null) {
+                g.disconnect()
+                // Closing the client handle alone does not await the remote disconnection.
+                withTimeoutOrNull(1_000) { disconnected.await() }
+            }
+        } finally {
+            g?.close()
+            rx.close()
+        }
     }
 
     companion object {

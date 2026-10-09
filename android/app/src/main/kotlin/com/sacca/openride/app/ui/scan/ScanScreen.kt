@@ -89,7 +89,9 @@ fun ScanScreen(vm: ScanViewModel = hiltViewModel()) {
             Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { vm.select(ad) }) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(ad.name, style = MaterialTheme.typography.titleMedium)
+                        val model = com.sacca.openride.core.profile.modelNameFromSerial(ad.name)
+                        Text(model ?: ad.name, style = MaterialTheme.typography.titleMedium)
+                        if (model != null) Text(ad.name, style = MaterialTheme.typography.bodySmall)
                         Text("${ad.address}  ·  ${ad.rssi} dBm", style = MaterialTheme.typography.bodySmall)
                     }
                     TextButton({ vm.setup(ad) }) { Text("Credential") }

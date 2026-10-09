@@ -9,6 +9,32 @@ Status legend: ✅ verified on a real scooter · 🟡 matches a real capture, no
 verified live from our code · ❓ unverified. Software tests do not count as
 hardware verification.
 
+## Model from serial prefix (2026-10-05)
+
+- [Original firmware research by VooDooShamane, post #9 (2024-05-21)](https://rollerplausch.com/threads/f2-series-informationen-firmware-hardware-tuning.11004/)
+  identifies these model groups from the firmware's model flag:
+  F2 Pro = `NAGR NAGV NAGU NAGT NAGS`; F2 Plus = `NAGF NAGK NAGJ NAGH NAGG`;
+  F2 = `NAGA NAGE NAGD NAGC NAGB`.
+  [Segway's F2-series declaration](https://assets.segway-cdn.com/EU-DoC/Multi-language-EU-DoC/EU-DoC_KickScooter-F2-series.pdf)
+  independently lists the six EU prefixes for the F2/F2 Plus/F2 Pro family,
+  but does not explicitly map each prefix to an individual model.
+- ✅ Python lookup of the serial read from this real F2 Pro returns Ninebot
+  F2 Pro. Other prefixes are literature-derived, not locally hardware-verified.
+  Synthetic tests cover all listed prefixes and unknown/malformed input.
+- Android uses this lookup for display on scan, home, and credential screens.
+  Unknown prefixes retain the advertised identity. Detection does not select
+  a protocol profile or establish support for another scooter model. The
+  original serial remains unchanged for crypto, credential lookup, and reconnect.
+  ❓ Android display changes have not been installed/tested on a phone.
+- Authenticated reads of BLE-board ASCII candidates: `0x05` (14 bytes) matches
+  both the INIT serial and advertisement; `0x60` (14 bytes) is a different
+  printable alphanumeric identifier; `0xCD` (16 bytes) includes a readable
+  numeric/hyphen identifier surrounded by nonprintable bytes. A 16-byte read
+  at `0x70` failed strict ASCII decoding, so the earlier serial-mirror hypothesis
+  for that range is not confirmed by this read. No friendly model words were
+  found in the successfully decoded candidates. Exact bytes/identifiers stay
+  in a private report outside the repository; unknown field meanings remain ❓.
+
 ## Handshake
 
 - Reconnect with a stored password: `INIT(0x5B)` (name key) -> `PAIR/AUTH(0x5D)` with the 14-byte serial,
@@ -60,10 +86,87 @@ Unverified unless noted: each item is inferred from a single snapshot. Serial-li
   sensors stored as value+20.
 - Controller 0xB1-0xBA: a mirror of the live values (range actual/predicted, battery %, temperature, mileage, status
   word), probably a block the app polls at once. Mileage = u32 at 0x29/0x2A (m), confirmed by the 1332.7 km reading.
-- Controller 0x3E/0x3F/0x41/0x42/0x3A hold small values in the 20-30 and 230 range: likely further temperatures. 0x22/0x23 = 94/65.
+- Controller 0x3E/0x3F/0x41/0x42/0x3A hold small values in the 20-30 and 230 range. The earlier temperature guess for 0x3A is questionable: the ES reference identifies it as a trip operating timer (see investigation below). 0x22/0x23 = 94/65.
 - Controller 0x32-0x35 (two u32?), 0x73 = 20000, 0x74 = 150, 0xC8-0xCE (0xF0xx patterns), 0xDA-0xDF: unknown.
 - BLE board 0x78-0xAA and 0xD9-0xE0 look like high-entropy data (key/certificate material?). Do not dump or commit it.
 - BLE board 0x05-0x0B and 0x70-0x77 repeat the scooter name; 0x60-0x66 and 0xCD-0xD4 read as other ASCII ids.
+
+## Undocumented field investigation (2026-10-05)
+
+The [Ninebot ES protocol reference, PDF pages 8–11 and 15–16](https://wiki.scooterhacking.org/lib/exe/fetch.php?media=ninebot_es_scooter_protocol_918.pdf)
+provides hypotheses, not confirmed F2 Pro mappings:
+
+| Board | Registers | Reference meaning | Next check |
+|---|---|---|---|
+| Controller | `0x32–0x33`, `0x34–0x35` | Lifetime operating/riding seconds, two u32 values | Compare elapsed time while stationary, then riding |
+| Controller | `0x3A`, `0x3B` | Trip operating/riding seconds | Check ticking and reset after power cycle |
+| Controller | `0x2F` | Trip distance, 10 m units | Compare before/after a measured trip |
+| Controller | `0x3F`, `0x41` | Battery/MOS temperatures | Compare with BMS sensors; establish scale |
+| Controller | `0x53` | Motor phase current, 0.01 A | Compare idle and loaded readings |
+| Controller | `0xC8–0xCF` | Legacy LED colors | Low priority; F2 lacks those chassis lights |
+| Controller | `0xDA–0xDF` | CPU identifier | Treat as private identity, not telemetry |
+| BMS | `0x18`, `0x19`, `0x31` | Design/full/remaining capacity, mAh | Check plausible capacity and SOC ratio |
+| BMS | `0x1B`, `0x1C` | Cycles and charging events | Compare official app battery information |
+| BMS | `0x30` bit 6 | Charging flag | Consistent with observed `0x01 → 0x43`; bit 1 also changes |
+| BMS | `0x36–0x38` | Balance/under-/overvoltage states | Compare cell readings; keep raw until validated |
+
+❓ Controller `0xE4`, `0xE7`, BLE `0x50`, and BMS `0x52–0x53` remain
+unmapped by this reference. The F2 quick-read mirror differs from the ES table,
+so that table must not be applied blindly to `0xB0+` either.
+
+The initial probe authenticated but found power off. After the owner authorized
+`f2 power on`, the captured power-on frame succeeded (`0x4D: 0 → 1`). The
+following probes used only authenticated READ frames, without changing settings
+or replacing the credential. The scooter was left on after sampling.
+
+### Live stationary results
+
+✅ Three controller samples, roughly 3.6 seconds apart:
+
+| Register | Raw values | Interpretation and limit |
+|---|---|---|
+| `0x32`, 4 bytes | `376314 → 376318 → 376321` | Seconds-like counter: +7 in about 7.1 s; consistent with lifetime operating time |
+| `0x34`, 4 bytes | `215632` throughout | Consistent with lifetime riding time; needs moving comparison |
+| `0x3A`, 2 bytes | `20 → 24 → 28` | Seconds-like counter; confirms earlier temperature guess was wrong; trip/reset semantics untested |
+| `0x3B`, 2 bytes | `0` throughout | Riding-time candidate; needs moving comparison |
+| `0x26`, `0x2F`, `0x53` | `0` throughout | Speed/trip-distance/phase-current candidates remain unverified in motion |
+| `0x3E`, `0x3F`, `0x41`, `0x42` | `250`, `230`, `25`, `21` | Different possible temperature scales; only raw observations |
+| `0xE4`, `0xE7` | `22858`, `1` throughout | Still unidentified |
+
+✅ BMS snapshot (raw values verified; new meanings below remain inferred):
+
+- `0x18 = 12800`, `0x19 = 12800`, `0x31 = 7321`, `0x32 = 57`.
+  Proposed design/full/remaining mAh agrees arithmetically:
+  `7321 / 12800 × 100 = 57.20%`. One snapshot does not independently establish
+  capacity calibration or whether full capacity is learned or nominal.
+- `0x1A = 3600`: proposed 0.01 V units gives nominal 36 V;
+  `0x34 = 3775` gives measured 37.75 V using the existing verified decoder.
+- `0x1B = 47`, `0x1C = 104`: cycle/charging-event hypotheses need an official-app
+  comparison and a before/after charge observation.
+- `0x30 = 0x8001`: charging bit 6 is clear; bit 15 is set and unidentified.
+  `0x36`, `0x37`, `0x38` are zero; this alone does not validate their bit meanings.
+- `0x35 = 0x2D2D`: existing temperature decoder gives 25 °C for both sensors.
+  `0x52 = 0x2D00`: high byte matches a temperature byte in this snapshot;
+  proposed temperature relationship is unverified. `0x53 = 0`.
+- `0x39 = 5886`, `0x3A = 5886`, `0x3B = 98`. The first two do not match the
+  raw remaining mAh value. Their ES coulomb/voltage capacity labels must not be
+  promoted to a verified F2 decoder without further evidence.
+
+Next comparisons: movement for the riding counters and `0x26`; a controlled
+power cycle for trip-counter reset; official-app battery details for cycles;
+charging for capacity/status changes. No automatic power cycle was performed.
+
+Existing read-only commands for snapshots (repeat after a known interval):
+
+```sh
+f2 read 0x32 --target ctrl --len 8
+f2 read 0x3A --target ctrl --count 2
+f2 read 0x18 --target bms --count 5
+f2 read 0x30 --target bms --count 2
+```
+
+The eight bytes at `0x32` must be decoded as **two** little-endian u32 values,
+not one u64; the existing CLI's `le16` annotation only shows the first word.
 
 ## What the official app polls (decoded from segway-comms.pklg and segway-pairing.pklg; same set in both)
 

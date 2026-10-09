@@ -23,6 +23,7 @@ from pathlib import Path
 from . import decode as decode_mod
 from .protocol import NINEBOT_MANUFACTURER_ID, NUS_SERVICE_UUID, Cmd, Dev
 from .registers import BY_KEY, REGISTERS, STATUS_KEYS
+from .identity import model_from_serial
 
 CONFIG_DIR = Path(os.environ.get("F2PROBE_HOME", Path.home() / ".config" / "f2probe"))
 APP_KEY_FILE = CONFIG_DIR / "app_key.hex"
@@ -253,6 +254,8 @@ async def cmd_pair(args) -> None:
 
 async def cmd_status(args) -> None:
     async def body(client) -> None:
+        serial = client.init_reply.data[16:].decode('ascii', errors='replace').rstrip('\0')
+        print(f"{'Model (serial prefix):':<22}{model_from_serial(serial) or 'Unknown'}")
         # The BLE board answers even when the scooter is off; the controller and battery boards do not.
         state = await client.power_state()
         print(f"{'Power state (0x4D):':<22}{'on' if state else 'off'} (raw {state})")

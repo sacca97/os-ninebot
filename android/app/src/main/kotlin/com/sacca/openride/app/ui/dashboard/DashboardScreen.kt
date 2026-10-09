@@ -70,7 +70,9 @@ fun DashboardScreen(
         if (st.connected) {
             val on = st.power == true || st.profile.power == null
             val charging = st.values["charging"] == "yes"
-            Text(st.name, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 8.dp))
+            val model = com.sacca.openride.core.profile.modelNameFromSerial(st.name)
+            Text(model ?: st.name, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 8.dp))
+            if (model != null) Text(st.name, style = MaterialTheme.typography.bodySmall)
             Text(
                 when (st.power) { true -> if (charging) "On · charging" else "On"; false -> "Off"; null -> if (st.profile.power == null) "Connected" else "Reading…" },
                 style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary,
