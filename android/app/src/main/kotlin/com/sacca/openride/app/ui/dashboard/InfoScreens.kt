@@ -47,7 +47,7 @@ fun BatteryScreen(vm: DashboardViewModel) = InfoPage(vm) { v, readings ->
 @Composable
 fun RideScreen(vm: DashboardViewModel) = InfoPage(vm) { v, readings ->
     Section("Range", listOf("range", "range_pred"), v, readings)
-    Section("Ride", listOf("mode", "speed", "avg_speed", "speed_26", "mileage", "temp"), v, readings)
+    Section("Ride", listOf("mode", "speed", "mileage", "temp"), v, readings)
 }
 
 @Composable

@@ -30,10 +30,10 @@ class ProfileTest {
         FrameGuard.assertSafe(power.off, allowPower = true)
     }
 
-    @Test fun incompleteReadingIsRejectedAndSpeedCandidateRemainsRaw() {
-        val candidate = DeviceProfiles.default.reading("speed_26")
+    @Test fun incompleteReadingIsRejectedAndLiveSpeedRemainsRaw() {
+        val candidate = DeviceProfiles.default.reading("speed")
         assertTrue(!candidate.experimental && candidate.fast)
-        assertTrue(candidate.evidence.contains("unknown"))
+        assertTrue(candidate.evidence.contains("scale is confirmed"))
         assertEquals("raw 55", candidate.decode(byteArrayOf(55, 0)))
         assertThrows(IllegalArgumentException::class.java) { candidate.decode(byteArrayOf(55)) }
     }

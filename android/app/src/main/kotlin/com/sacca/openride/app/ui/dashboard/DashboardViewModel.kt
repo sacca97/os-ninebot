@@ -86,7 +86,10 @@ class DashboardViewModel @Inject constructor(
     fun onForeground() {
         foreground.value = true
         idleJob?.cancel(); idleJob = null
-        if (droppedWhileIdle) { droppedWhileIdle = false; start() }
+        if (droppedWhileIdle || wantsConnection && connJob?.isActive != true) {
+            droppedWhileIdle = false
+            start()
+        }
     }
 
     fun clearMessages() = _ui.update { it.copy(error = null, notice = null) }
@@ -111,7 +114,7 @@ class DashboardViewModel @Inject constructor(
     private val wake = Channel<Unit>(Channel.CONFLATED)
 
     /**
-     * Connects to the selected scooter, else to the one saved last (no scan). Idempotent: calling it again for the same
+     * Connects to the selected scooter, else to the one saved last (with a fresh scan). Idempotent: calling it again for the same
      * scooter does nothing; for a different one it switches. With nothing saved it just reports [DashboardUiState.noScooter].
      */
     fun start() {
@@ -127,30 +130,31 @@ class DashboardViewModel @Inject constructor(
         _ui.update { DashboardUiState() }
         connJob = viewModelScope.launch {
             val me = currentCoroutineContext()[Job]
+            var ownedSession: ScooterSession? = null
             try {
-                var ad = connector.selected.value
-                val savedName = if (ad == null) settings.lastScooter()?.second else null
-                val credName = ad?.name ?: savedName
+                val selected = connector.selected.value
+                val savedName = if (selected == null) settings.lastScooter()?.second else null
+                val credName = selected?.name ?: savedName
                 // The advertised name is the serial, so the credential (Keystore decrypt) loads while we look for / connect to it.
                 val early = credName?.let { async { store.loginCredential(it) } }
                 if (early?.await() == null) {
                     _ui.update { it.copy(noScooter = true) }
                     return@launch
                 }
-                if (ad == null) {
-                    // After a restart: find the saved scooter with a short scan (see Scanner.find for why not by address).
-                    _ui.update { it.copy(name = savedName.orEmpty(), busy = "Looking for scooter…") }
-                    ad = Scanner.find(context, savedName!!, profile = settings.lastProfile())
-                    if (ad == null) {
-                        _ui.update { it.copy(error = "Scooter not found. Is it on and in range, and is the other app closed (it allows one connection)?") }
-                        return@launch
-                    }
-                    connector.select(ad)
+                // Scan again: a previous device can have an expired random Bluetooth address.
+                val name = selected?.name ?: savedName!!
+                val profile = selected?.profile ?: settings.lastProfile()
+                _ui.update { it.copy(name = name, busy = "Looking for scooter…") }
+                val ad = Scanner.find(context, name, profile = profile) ?: run {
+                    _ui.update { it.copy(error = "Scooter not found. Is it on and in range, and is the other app closed (it allows one connection)?") }
+                    return@launch
                 }
+                connector.select(ad)
                 connectedTo = ad.address
                 connectedProfile = ad.profile.id
                 _ui.update { it.copy(name = ad.name, profile = ad.profile, busy = "Connecting…") }
                 val conn = connector.connect(this)
+                ownedSession = conn.session
                 session = conn.session
                 val s = conn.session
                 val (pw, fromPending) = (if (conn.info.serial == ad.name) early!!.await() else store.loginCredential(conn.info.serial)) ?: run {
@@ -161,7 +165,7 @@ class DashboardViewModel @Inject constructor(
                 s.login(pw) // one attempt, no retry
                 if (fromPending) store.promotePending(conn.info.serial)
                 _ui.update { it.copy(busy = null, connected = true) }
-                settings.setLastScooter(ad.address, ad.name, ad.profile) // next launch connects without scanning
+                settings.setLastScooter(ad.address, ad.name, ad.profile)
                 launch {
                     s.notifications.collect { n ->
                         val on = s.powerFromNotification(n) ?: return@collect
@@ -178,9 +182,12 @@ class DashboardViewModel @Inject constructor(
             } catch (e: Throwable) {
                 if (BluetoothAccess.isEnabled(context)) _ui.update { it.copy(error = describe(e)) }
             } finally {
-                withContext(NonCancellable) { session?.close(); session = null }
-                if (connJob === me) connJob = null
-                _ui.update { it.copy(busy = null, connected = false) }
+                withContext(NonCancellable) { ownedSession?.close() }
+                if (session === ownedSession) session = null
+                if (connJob === me) {
+                    connJob = null
+                    _ui.update { it.copy(busy = null, connected = false) }
+                }
             }
         }
     }

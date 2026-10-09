@@ -9,6 +9,7 @@ import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.os.Build
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -167,6 +168,10 @@ class AndroidGattLink private constructor(private val profile: GattProfile) : Sc
                 try {
                     link.connect(context.applicationContext, device)
                     return link
+                } catch (e: TimeoutCancellationException) {
+                    last = BleConnectException("Bluetooth setup timed out")
+                    link.close()
+                    delay(500)
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     link.close(); throw e
                 } catch (e: Throwable) {

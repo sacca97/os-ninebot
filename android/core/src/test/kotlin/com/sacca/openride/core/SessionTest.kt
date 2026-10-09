@@ -31,7 +31,7 @@ class FakeScooterLink(
     private val name: String,
     private val password: ByteArray,
     var powered: Boolean = true,
-    /** Raw value of the "average speed" register (ctrl 0x65). */
+    /** Raw value of the live-speed register (ctrl 0x26). */
     var speed: Int = 0,
     /** When set the scooter never answers the speed registers. */
     var speedSilent: Boolean = false,
@@ -81,7 +81,7 @@ class FakeScooterLink(
                 reply(Packet(Dev.BATTERY, Dev.PHONE, Cmd.READ_ACK, p.idx, byteArrayOf(66, 0)), c + 1)
             p.cmd == Cmd.READ && p.dst == Dev.CONTROLLER && (p.idx == 0x65 || p.idx == 0x26) ->
                 if (!speedSilent) {
-                    val v = if (p.idx == 0x65) speed else 0
+                    val v = speed
                     reply(Packet(Dev.CONTROLLER, Dev.PHONE, Cmd.READ_ACK, p.idx, byteArrayOf(v.toByte(), (v shr 8).toByte())), c + 1)
                 }
             p.cmd == Cmd.READ && p.dst == Dev.BATTERY && p.idx == 0x40 && p.data[0].toInt() == 20 ->
@@ -161,11 +161,11 @@ class SessionTest {
     }
 
     @Test fun powerOffRefusedWhileSpeedNonZero() {
-        val link = FakeScooterLink("NBFAKE0000001A", pw, powered = true, speed = 55) // 5.5 km/h
+        val link = FakeScooterLink("NBFAKE0000001A", pw, powered = true, speed = 55) // Nonzero raw live speed; scale is not confirmed.
         run(link, power = true) { s ->
             s.init(); s.login(pw)
             try { s.setPower(false); fail("should refuse") } catch (e: PowerRefused) {
-                assertTrue(e.message!!.contains("5.5 km/h"))
+                assertTrue(e.message!!.contains("raw 55"))
             }
         }
         assertTrue(link.sent.none { it.cmd == Cmd.WRITE_NO_REPLY })
@@ -188,7 +188,7 @@ class SessionTest {
             assertEquals(PowerResult.CHANGED, s.setPower(false))
         }
         val order = link.sent.filter { it.cmd == Cmd.READ && it.dst == Dev.CONTROLLER || it.cmd == Cmd.WRITE_NO_REPLY }
-        assertEquals(listOf(0x65, 0x26, 0x79), order.map { it.idx })
+        assertEquals(listOf(0x26, 0x79), order.map { it.idx })
         assertFalse(link.powered)
     }
 

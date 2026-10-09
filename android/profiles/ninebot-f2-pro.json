@@ -29,7 +29,7 @@
       "static": true,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "ctrl_fw",
@@ -43,7 +43,7 @@
       "static": true,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "ble_fw",
@@ -57,7 +57,7 @@
       "static": true,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "bms_fw",
@@ -71,7 +71,7 @@
       "static": true,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "batt_pct",
@@ -87,7 +87,7 @@
       "static": false,
       "fast": true,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "batt_v",
@@ -103,7 +103,7 @@
       "static": false,
       "fast": true,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "range",
@@ -119,7 +119,7 @@
       "static": false,
       "fast": true,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "mileage",
@@ -136,25 +136,7 @@
       "static": false,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
-    },
-    {
-      "key": "avg_speed",
-      "label": "Average speed",
-      "device": "0x20",
-      "register": "0x65",
-      "bytes": 2,
-      "decode": {
-        "kind": "number",
-        "scale": 0.1,
-        "unit": "km/h",
-        "precision": 1
-      },
-      "static": false,
-      "fast": true,
-      "experimental": false,
-      "verification": "observed; see docs/android-plan.md",
-      "evidence": "Reference map labels 0x65 Average speed; owner confirms it is not live speed. Averaging period/reset behavior unverified."
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "mode",
@@ -173,7 +155,7 @@
       "static": false,
       "fast": true,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "error",
@@ -189,7 +171,7 @@
       "static": false,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "alarm",
@@ -205,7 +187,7 @@
       "static": false,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "status",
@@ -221,7 +203,7 @@
       "static": false,
       "fast": true,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "batt_a",
@@ -238,7 +220,7 @@
       "static": false,
       "fast": true,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "cell_mv",
@@ -253,7 +235,7 @@
       "static": false,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "cell_temp",
@@ -269,7 +251,7 @@
       "static": false,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "batt_health",
@@ -285,7 +267,7 @@
       "static": false,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "temp",
@@ -303,11 +285,11 @@
       "static": false,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
-      "key": "speed_26",
-      "label": "Live speed candidate (0x26, raw)",
+      "key": "speed",
+      "label": "Live speed (raw)",
       "device": "0x20",
       "register": "0x26",
       "bytes": 2,
@@ -317,8 +299,8 @@
       "static": false,
       "fast": true,
       "experimental": false,
-      "verification": "unverified",
-      "evidence": "docs/f2pro-findings.md: official app polls controller 0x26; zero at rest. Ninebot ES protocol maps 0x26 to signed current speed in 0.1 km/h units. F2 Pro meaning/scale while moving remain unknown; retain raw decoding."
+      "verification": "owner confirmed live-speed meaning on hardware; scale and sign unverified",
+      "evidence": "docs/f2pro-findings.md: owner confirms controller 0x26 follows live speed (2026-10-09). Keep raw decoding until scale is confirmed."
     },
     {
       "key": "ctrl_v",
@@ -350,7 +332,7 @@
       "static": false,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "walk_mode",
@@ -366,7 +348,7 @@
       "static": false,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "charging",
@@ -383,7 +365,7 @@
       "static": false,
       "fast": true,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "kers",
@@ -402,7 +384,7 @@
       "static": false,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "tcs",
@@ -418,7 +400,7 @@
       "static": false,
       "fast": false,
       "experimental": false,
-      "verification": "observed; see docs/android-plan.md"
+      "verification": "observed; see docs/f2pro-findings.md"
     },
     {
       "key": "cruise",
@@ -483,8 +465,7 @@
       ]
     },
     "zero_checks": [
-      "avg_speed",
-      "speed_26"
+      "speed"
     ],
     "verification": "verified-stationary; interlock-unverified-moving"
   }

@@ -18,6 +18,9 @@ Back up the ignored `release.jks` and `keystore.properties`; updates need the sa
 `make release VERSION=0.0.1` updates the app version, increments `versionCode`,
 commits, tags and pushes. GitHub Actions builds and publishes the signed APK.
 Use a clean working tree. `make build-release` builds locally.
+Run `make check-release` before pushing: it runs the same tests, lint and build as
+GitHub. Without `keystore.properties` it produces an unsigned APK; signing needs
+your real release key.
 
 Set GitHub Actions secrets `KEYSTORE_BASE64` (base64 of `release.jks`),
 `KEYSTORE_PASSWORD` and `KEY_PASSWORD` from your existing signing key.

@@ -22,7 +22,7 @@ APK    := app/build/outputs/apk/debug/app-debug.apk
 APK_RELEASE := app/build/outputs/apk/release/app-release.apk
 
 .PHONY: help build test lint check install run start stop logs uninstall devices clean \
-        keystore build-release release install-release run-release uninstall-release
+        keystore build-release check-release release install-release run-release uninstall-release
 
 help:  ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -71,6 +71,9 @@ build-release:  ## build the signed, minified release APK locally (needs `make k
 	@test -f keystore.properties || { echo "No signing key yet: run 'make keystore' once."; exit 1; }
 	$(GRADLE) :app:assembleRelease
 	@echo "-> $(APK_RELEASE)"
+
+check-release:  ## run GitHub's core tests, release lint and release build locally
+	$(GRADLE) --no-daemon --build-cache :core:test :app:lintRelease :app:assembleRelease
 
 release:  ## bump, commit, tag and push VERSION=0.0.1; GitHub builds and publishes
 	@set -eu; \
