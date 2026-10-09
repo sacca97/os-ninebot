@@ -15,8 +15,8 @@ android {
         applicationId = "com.sacca.openride"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.1.1"
+        versionCode = 4
+        versionName = "0.1.2"
     }
     // Release signing comes from android/keystore.properties (created by `make keystore`, git-ignored). Without it the
     // release APK is unsigned and cannot be installed.
