@@ -161,11 +161,11 @@ class SessionTest {
     }
 
     @Test fun powerOffRefusedWhileSpeedNonZero() {
-        val link = FakeScooterLink("NBFAKE0000001A", pw, powered = true, speed = 55) // Nonzero raw live speed; scale is not confirmed.
+        val link = FakeScooterLink("NBFAKE0000001A", pw, powered = true, speed = 55) // 5.5 km/h
         run(link, power = true) { s ->
             s.init(); s.login(pw)
             try { s.setPower(false); fail("should refuse") } catch (e: PowerRefused) {
-                assertTrue(e.message!!.contains("raw 55"))
+                assertTrue(e.message!!.contains("5.5 km/h"))
             }
         }
         assertTrue(link.sent.none { it.cmd == Cmd.WRITE_NO_REPLY })

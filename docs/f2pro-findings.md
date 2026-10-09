@@ -190,9 +190,9 @@ not one u64; the existing CLI's `le16` annotation only shows the first word.
   0.1 km/h units, and separately identifies `0x65` as average speed.
   This is another model's specification, not F2 Pro hardware verification.
 - ✅ Owner confirmed on 2026-10-09 that controller `0x26` follows live speed.
-  The app and Python now call it Live speed. Scale and sign have not yet been
-  confirmed against the dashboard, so decoding remains raw. The ES specification
-  suggests signed little-endian 16-bit values in 0.1 km/h units.
+  The owner also confirmed raw / 10 matches dashboard km/h. Android and Python
+  display Live speed in km/h. Signed little-endian 16-bit decoding follows the ES
+  specification; negative values have not been verified on hardware.
 - `f2 read 0x26 --target ctrl --len 2` provides a read-only snapshot.
 - Owner reports `0x65` stayed zero and was not useful. Average speed has been
   removed from displayed/polled readings and the power-off checks. Power-off now

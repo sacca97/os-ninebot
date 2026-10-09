@@ -87,8 +87,8 @@ REGISTERS: list[Reg] = [
     Reg("mileage", "Mileage", C, 0x29, 2, lambda d: round(_u32(d) / 1000, 1), "km"),
     Reg("body_temp", "Body temperature", C, 0x3E, 1, lambda d: _les16(d) / 10, "°C"),
     Reg("ctrl_voltage", "Controller voltage", C, 0x47, 1, lambda d: _le16(d) / 100, "V"),
-    # Live-speed meaning confirmed by owner; units and sign still need verification.
-    Reg("speed", "Live speed (raw)", C, 0x26, 1, _le16),
+    # Owner confirmed live speed and raw / 10 km/h; signed encoding follows the ES spec.
+    Reg("speed", "Live speed", C, 0x26, 1, lambda d: _les16(d) / 10, "km/h"),
     Reg("fw_ble", "BLE FW", C, 0x68, 1, _ver),
     Reg("mode", "Mode", C, 0x75, 1, lambda d: _MODES.get(_le16(d), f"0x{_le16(d):04X}")),
     Reg("walk_mode", "Walk mode (5 km/h)", C, 0x77, 1, lambda d: bool(_le16(d))),

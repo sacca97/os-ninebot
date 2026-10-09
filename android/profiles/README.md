@@ -43,8 +43,8 @@ power-off. `FrameGuard` independently authorizes writes. Update it and Python
 `transport.assert_safe` together, with tests, for any new allowed write.
 
 ❓ The F2 Pro profile refactor and motion interlock are unverified on hardware.
-`speed` is live speed, confirmed by the owner on hardware. It remains raw until
-scale and sign are confirmed against the dashboard. Power-off checks this register;
+`speed` displays live speed in km/h (raw / 10), confirmed against the dashboard
+by the owner. Negative readings remain unverified. Power-off checks this register;
 average speed (`0x65`) has been removed.
 See [speed evidence](../../docs/f2pro-findings.md#live-speed-investigation-2026-10-04)
 and the [development workflow](../../docs/porting.md).

@@ -289,18 +289,22 @@
     },
     {
       "key": "speed",
-      "label": "Live speed (raw)",
+      "label": "Live speed",
       "device": "0x20",
       "register": "0x26",
       "bytes": 2,
       "decode": {
-        "kind": "raw"
+        "kind": "number",
+        "signed": true,
+        "scale": 0.1,
+        "unit": "km/h",
+        "precision": 1
       },
       "static": false,
       "fast": true,
       "experimental": false,
-      "verification": "owner confirmed live-speed meaning on hardware; scale and sign unverified",
-      "evidence": "docs/f2pro-findings.md: owner confirms controller 0x26 follows live speed (2026-10-09). Keep raw decoding until scale is confirmed."
+      "verification": "owner confirmed live speed and 0.1 km/h scale; negative values unverified",
+      "evidence": "docs/f2pro-findings.md: owner confirms controller 0x26 follows live speed (2026-10-09). Owner confirmed raw / 10 matches dashboard km/h. Signed decoding follows the ES specification; negative readings remain unverified."
     },
     {
       "key": "ctrl_v",
